@@ -1,0 +1,2298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bio Vitalie — Saúde Integrativa</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK via REST API pura — sem dependência de CDN externo -->
+<script>
+(function() {
+  const PROJECT = "biovitalie-3d35b";
+  const API_KEY = "AIzaSyB8KlzpO2EGiyKon6gmG7C-KVDbYRg9ua8";
+  const BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+
+  // ── Converte documento Firestore → objeto JS plano ──
+  function fromFirestore(doc) {
+    const out = { id: doc.name.split('/').pop() };
+    for (const [k, v] of Object.entries(doc.fields || {})) {
+      if (v.stringValue  !== undefined) out[k] = v.stringValue;
+      else if (v.integerValue !== undefined) out[k] = Number(v.integerValue);
+      else if (v.booleanValue !== undefined) out[k] = v.booleanValue;
+      else if (v.arrayValue   !== undefined) out[k] = (v.arrayValue.values || []).map(fromValue);
+      else if (v.mapValue     !== undefined) out[k] = fromMap(v.mapValue.fields || {});
+      else out[k] = null;
+    }
+    return out;
+  }
+  function fromValue(v) {
+    if (v.stringValue  !== undefined) return v.stringValue;
+    if (v.integerValue !== undefined) return Number(v.integerValue);
+    if (v.booleanValue !== undefined) return v.booleanValue;
+    if (v.arrayValue   !== undefined) return (v.arrayValue.values || []).map(fromValue);
+    if (v.mapValue     !== undefined) return fromMap(v.mapValue.fields || {});
+    return null;
+  }
+  function fromMap(fields) {
+    const o = {};
+    for (const [k,v] of Object.entries(fields)) o[k] = fromValue(v);
+    return o;
+  }
+
+  // ── Converte objeto JS → campos Firestore ──
+  function toFirestore(obj) {
+    const fields = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === 'id') continue;
+      fields[k] = toValue(v);
+    }
+    return { fields };
+  }
+  function toValue(v) {
+    if (v === null || v === undefined) return { nullValue: null };
+    if (typeof v === 'boolean') return { booleanValue: v };
+    if (typeof v === 'number')  return { integerValue: String(Math.round(v)) };
+    if (typeof v === 'string')  return { stringValue: v };
+    if (Array.isArray(v))       return { arrayValue: { values: v.map(toValue) } };
+    if (typeof v === 'object')  return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,val])=>[k,toValue(val)])) } };
+    return { stringValue: String(v) };
+  }
+
+const API_URL = "https://script.google.com/macros/s/AKfycbw3g7A-U53U_SwPLq7nhVuk-jLSuPb5kDlJtyPErAlRSPdg9xbyPDh-fN24N73br-gf/exec";
+  
+
+window.__vita = {
+
+  loadPatients: async () => {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    return data.patients || [];
+  },
+
+  savePatient: async (patient) => {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "save",
+        patient
+      })
+    });
+    return await res.json();
+  },
+
+  deletePatient: async (id) => {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "delete",
+        id
+      })
+    });
+    return await res.json();
+  },
+
+  login: async (email, password) => {
+    const res = await fetch(`${API_URL}?action=login&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
+    return await res.json();
+  },
+
+  // 🔥 ADICIONA ISSO AQUI
+  subscribePatients: (cb) => {
+    window.__vita.loadPatients().then(cb);
+    return () => {};
+  }
+
+};
+
+window.__vitaReady = true;
+window.dispatchEvent(new Event("vitaReady"));
+console.log("✅ Sheets API conectada");
+})();
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --ink:#1c1712;--ink2:#3d3529;--ink3:#6b5f52;--muted:#a09181;
+  --border:#e8dfd4;--border2:#f0e8df;--bg:#faf6f1;--bg2:#f4ede3;
+  --card:#ffffff;--cream:#fdf8f2;
+  --terra:#b5673a;--terra2:#d4845a;--terra3:#8c4e2a;
+  --gold:#c4965a;--gold2:#d4aa78;
+  --rose:#c47878;--sage:#6b8c6e;
+  --grad:linear-gradient(135deg,#b5673a,#c4965a);
+  --sh-sm:0 2px 12px rgba(28,23,18,.06);
+  --sh-md:0 8px 32px rgba(28,23,18,.1);
+  --sh-lg:0 20px 60px rgba(28,23,18,.15);
+}
+body{font-family:'Jost',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+.a1{animation:fadeUp .5s cubic-bezier(.22,.68,0,1.2) both;}
+.a2{animation:fadeUp .5s .08s cubic-bezier(.22,.68,0,1.2) both;}
+.a3{animation:fadeUp .5s .16s cubic-bezier(.22,.68,0,1.2) both;}
+.a4{animation:fadeUp .5s .24s cubic-bezier(.22,.68,0,1.2) both;}
+
+/* LOGIN */
+.lg-bg{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(ellipse 80% 60% at 20% 100%,rgba(181,103,58,.12) 0%,transparent 60%),
+             radial-gradient(ellipse 60% 80% at 80% 0%,rgba(196,150,90,.08) 0%,transparent 60%),var(--bg);}
+.lg-card{background:var(--card);border-radius:28px;padding:52px 48px;width:100%;max-width:420px;
+  box-shadow:var(--sh-lg);border:1px solid var(--border2);animation:pop .5s cubic-bezier(.22,.68,0,1.2) both;}
+.lg-logotype{display:flex;align-items:center;gap:14px;margin-bottom:40px;}
+.lg-emblem{width:46px;height:46px;background:var(--grad);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 20px rgba(181,103,58,.3);}
+.lg-brand{font-family:'Libre Baskerville',serif;font-size:22px;color:var(--ink);letter-spacing:.02em;}
+.lg-brand span{display:block;font-family:'Jost',sans-serif;font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:2px;}
+.lg-h1{font-family:'Libre Baskerville',serif;font-size:26px;font-weight:400;line-height:1.3;margin-bottom:6px;}
+.lg-h1 em{font-style:italic;color:var(--terra);}
+.lg-sub{font-size:13px;color:var(--muted);margin-bottom:32px;letter-spacing:.02em;}
+.fl{margin-bottom:18px;}
+.fl label{display:block;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.fi{width:100%;padding:14px 18px;border:1.5px solid var(--border);border-radius:12px;
+  background:var(--bg);font-family:'Jost',sans-serif;font-size:14px;color:var(--ink);
+  outline:none;transition:border-color .2s,box-shadow .2s;}
+.fi:focus{border-color:var(--terra);box-shadow:0 0 0 3px rgba(181,103,58,.12);}
+.fs{width:100%;padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;
+  background:var(--bg);font-family:'Jost',sans-serif;font-size:14px;color:var(--ink);
+  outline:none;-webkit-appearance:none;transition:border-color .2s;}
+.fs:focus{border-color:var(--terra);}
+textarea.fi{resize:vertical;min-height:90px;}
+.btn-t{width:100%;padding:15px;background:var(--grad);border:none;border-radius:12px;
+  font-family:'Jost',sans-serif;font-size:14px;font-weight:600;letter-spacing:.06em;color:white;
+  cursor:pointer;box-shadow:0 6px 24px rgba(181,103,58,.35);transition:transform .15s,box-shadow .15s;margin-top:4px;}
+.btn-t:hover{transform:translateY(-2px);box-shadow:0 10px 32px rgba(181,103,58,.42);}
+.lg-sw{text-align:center;margin-top:22px;font-size:12px;color:var(--muted);letter-spacing:.04em;}
+.lg-sw button{background:none;border:none;font-family:'Jost',sans-serif;font-size:12px;font-weight:600;
+  color:var(--terra);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+.lg-dm{margin-top:14px;text-align:center;font-size:11px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 12px;}
+
+/* SHELL */
+.shell{max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);}
+.shell-body{flex:1;overflow-y:auto;padding-bottom:84px;}
+.tab-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;
+  background:rgba(253,248,242,.95);backdrop-filter:blur(20px);border-top:1px solid var(--border2);
+  display:flex;padding:10px 0 16px;z-index:100;}
+.tab-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  background:none;border:none;cursor:pointer;font-family:'Jost',sans-serif;padding:4px 0;}
+.tab-icon{font-size:21px;transition:transform .2s;}
+.tab-label{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);transition:color .2s;}
+.tab-dot{width:4px;height:4px;border-radius:50%;background:var(--terra);margin:0 auto;opacity:0;transition:opacity .2s;}
+.tab-item.on .tab-label{color:var(--terra);}
+.tab-item.on .tab-icon{transform:scale(1.15);}
+.tab-item.on .tab-dot{opacity:1;}
+
+/* HOME */
+.home-hero{padding:32px 24px 24px;background:linear-gradient(180deg,var(--bg2) 0%,var(--bg) 100%);}
+.hero-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;}
+.hero-gr{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;}
+.hero-nm{font-family:'Libre Baskerville',serif;font-size:28px;font-weight:400;margin-top:4px;line-height:1.2;}
+.hero-nm em{font-style:italic;color:var(--terra);}
+.hero-av{width:44px;height:44px;border-radius:50%;background:var(--grad);color:white;font-size:16px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(181,103,58,.3);flex-shrink:0;}
+.cta-ci{display:flex;align-items:center;gap:16px;
+  background:linear-gradient(135deg,#c4845a,#d4a870);
+  border-radius:20px;padding:18px 22px;
+  cursor:pointer;box-shadow:0 8px 28px rgba(181,103,58,.28);transition:transform .15s,box-shadow .15s;}
+.cta-ci:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(181,103,58,.38);}
+.cta-ci-ic{width:44px;height:44px;flex-shrink:0;border-radius:14px;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:20px;}
+.cta-ci-txt{flex:1;}
+.cta-ci-title{color:white;font-size:15px;font-weight:600;letter-spacing:.02em;}
+.cta-ci-sub{color:rgba(255,255,255,.7);font-size:12px;margin-top:2px;}
+.cta-ci-arr{color:rgba(255,255,255,.6);font-size:24px;font-weight:300;}
+.sec-pad{padding:0 24px;}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin:22px 0 14px;}
+.sec-title{font-family:'Libre Baskerville',serif;font-size:17px;font-weight:400;letter-spacing:.01em;}
+.sec-lnk{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--terra);background:none;border:none;cursor:pointer;font-family:'Jost',sans-serif;}
+
+/* JOURNEY */
+.j-rail{display:flex;gap:10px;overflow-x:auto;padding:14px 24px 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.j-rail::-webkit-scrollbar{display:none;}
+.ph-tile{flex-shrink:0;width:124px;border-radius:18px;padding:22px 14px 16px;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  position:relative;cursor:pointer;transition:transform .2s,box-shadow .2s;border:1.5px solid transparent;}
+.ph-tile:hover{transform:translateY(-2px);}
+.ph-tile.active{background:var(--card);border-color:var(--terra);box-shadow:0 8px 28px rgba(181,103,58,.15);}
+.ph-tile.done{background:rgba(107,140,110,.07);border-color:rgba(107,140,110,.25);}
+.ph-tile.locked{background:var(--bg2);opacity:.55;}
+.ph-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);
+  background:var(--terra);color:white;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:4px 12px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(181,103,58,.3);}
+.ph-badge.done-b{background:var(--sage);}
+.ph-orb{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:18px;background:var(--bg2);}
+.ph-tile.active .ph-orb{background:rgba(181,103,58,.12);}
+.ph-tile.done .ph-orb{background:rgba(107,140,110,.12);}
+.ph-nm{font-size:11px;font-weight:600;text-align:center;letter-spacing:.02em;color:var(--ink2);}
+.ph-mo{font-size:10px;color:var(--muted);font-weight:400;}
+
+/* WEEK */
+.week-card{margin:0 24px;background:var(--card);border-radius:20px;padding:20px;
+  border:1px solid var(--border2);box-shadow:var(--sh-sm);}
+.week-row{display:flex;gap:4px;justify-content:space-between;margin-bottom:14px;}
+.day-pip{flex:1;max-width:44px;aspect-ratio:1;border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  font-size:10px;font-weight:600;color:var(--muted);background:var(--bg);transition:all .2s;}
+.day-pip.today{background:var(--ink);color:white;}
+.day-pip.chkd{background:var(--grad);color:white;box-shadow:0 4px 14px rgba(181,103,58,.3);}
+.week-ft{display:flex;align-items:center;justify-content:space-between;}
+.week-lbl{font-size:12px;color:var(--muted);font-weight:400;letter-spacing:.03em;}
+.week-cnt{font-family:'Libre Baskerville',serif;font-size:20px;font-weight:700;color:var(--ink);}
+
+/* PHASE DESC */
+.ph-desc{margin:16px 24px 0;background:linear-gradient(135deg,rgba(181,103,58,.07),rgba(196,150,90,.05));
+  border:1px solid rgba(181,103,58,.15);border-radius:20px;padding:20px 22px;}
+.ph-desc-nm{font-family:'Libre Baskerville',serif;font-size:16px;font-weight:400;margin-bottom:6px;}
+.ph-desc-tx{font-size:13px;color:var(--ink3);line-height:1.65;}
+
+/* CONTENT ITEMS */
+.c-block{padding:0 24px;}
+.c-item{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border2);
+  border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer;
+  transition:transform .15s,box-shadow .15s,border-color .15s;}
+.c-item:hover{transform:translateX(3px);border-color:var(--border);box-shadow:var(--sh-sm);}
+.c-ico{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;background:var(--bg2);}
+.c-ico.ex{background:rgba(196,150,90,.12);}
+.c-ico.med{background:rgba(107,140,110,.12);}
+.c-ico.rec{background:rgba(196,120,120,.1);}
+.c-ico.exam{background:rgba(100,140,200,.1);}
+.c-info{flex:1;}
+.c-name{font-size:14px;font-weight:500;color:var(--ink);letter-spacing:.01em;}
+.c-meta{font-size:11px;color:var(--muted);margin-top:3px;}
+.c-chev{color:var(--border);font-size:18px;}
+
+/* OVERLAY / SHEET */
+.overlay{position:fixed;inset:0;background:rgba(28,23,18,.6);backdrop-filter:blur(6px);
+  z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .25s ease;}
+.sheet{background:var(--cream);border-radius:28px 28px 0 0;width:100%;max-width:430px;
+  max-height:92vh;overflow-y:auto;padding:24px 24px 44px;animation:fadeUp .35s cubic-bezier(.22,.68,0,1.2);}
+.sh-handle{width:36px;height:3.5px;background:var(--border);border-radius:4px;margin:0 auto 22px;}
+.sh-title{font-family:'Libre Baskerville',serif;font-size:22px;font-weight:400;margin-bottom:4px;}
+.sh-sub{font-size:13px;color:var(--muted);margin-bottom:24px;}
+.f-lbl{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:block;}
+
+/* MOOD */
+.mood-strip{display:flex;gap:6px;margin-bottom:20px;}
+.mood-btn{flex:1;padding:11px 6px;border:1.5px solid var(--border);border-radius:12px;
+  background:white;display:flex;flex-direction:column;align-items:center;gap:5px;
+  cursor:pointer;transition:all .15s;font-family:'Jost',sans-serif;}
+.mood-btn.sel{border-color:var(--terra);background:rgba(181,103,58,.07);}
+.mood-em{font-size:20px;}
+.mood-lb{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--muted);}
+.mood-btn.sel .mood-lb{color:var(--terra);}
+
+/* SCALE */
+.scale-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0;}
+.scale-ttl{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.sq-row{display:flex;gap:5px;}
+.sq{flex:1;height:38px;border-radius:8px;background:var(--bg2);cursor:pointer;transition:all .15s;}
+.sq.e.on{background:var(--gold);}
+.sq.s.on{background:var(--sage);}
+
+/* SLIDER */
+.sl-block{margin-bottom:20px;}
+.sl-lbl{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.sl-val{margin-left:auto;color:var(--terra);font-size:13px;font-weight:600;}
+input[type=range]{width:100%;accent-color:var(--terra);cursor:pointer;}
+
+/* TAGS */
+.tag-cloud{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px;}
+.sym-tag{padding:8px 14px;border-radius:30px;border:1.5px solid var(--border);
+  font-family:'Jost',sans-serif;font-size:12px;font-weight:500;cursor:pointer;background:white;color:var(--ink2);transition:all .15s;}
+.sym-tag.on{background:rgba(181,103,58,.09);border-color:var(--terra);color:var(--terra);}
+
+/* TOGGLES */
+.tog-row{display:flex;gap:10px;margin-bottom:20px;}
+.tog-btn{flex:1;padding:14px;border:1.5px solid var(--border);border-radius:12px;
+  background:white;cursor:pointer;font-family:'Jost',sans-serif;font-size:13px;font-weight:500;
+  letter-spacing:.03em;color:var(--ink2);transition:all .15s;text-align:center;}
+.tog-btn.on{border-color:var(--sage);background:rgba(107,140,110,.09);color:var(--sage);}
+
+.btn-reg{width:100%;padding:16px;background:var(--ink);border:none;border-radius:12px;
+  color:white;font-family:'Jost',sans-serif;font-size:14px;font-weight:600;letter-spacing:.06em;
+  cursor:pointer;transition:background .2s,transform .15s;margin-top:8px;}
+.btn-reg:hover{background:var(--ink2);transform:translateY(-1px);}
+.btn-cancel{width:100%;padding:14px;background:none;border:none;font-family:'Jost',sans-serif;
+  font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;margin-top:8px;letter-spacing:.04em;}
+
+/* PLANO */
+.plano-hero{padding:32px 24px 20px;background:linear-gradient(180deg,var(--bg2) 0%,transparent 100%);}
+.plano-t{font-family:'Libre Baskerville',serif;font-size:26px;font-weight:400;}
+.plano-t em{font-style:italic;color:var(--terra);}
+.plano-s{font-size:12px;color:var(--muted);margin-top:4px;letter-spacing:.04em;}
+.coming-card{margin:0 24px 16px;background:var(--ink);border-radius:20px;padding:18px 20px;
+  display:flex;align-items:center;gap:16px;cursor:pointer;opacity:.88;}
+.coming-ic{width:42px;height:42px;background:rgba(255,255,255,.1);border-radius:12px;
+  display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;}
+.coming-title{color:white;font-size:14px;font-weight:600;letter-spacing:.02em;}
+.coming-sub{color:rgba(255,255,255,.45);font-size:11px;margin-top:2px;}
+.rem-card{margin:0 24px 10px;background:var(--card);border:1px solid var(--border2);border-radius:12px;
+  padding:16px;display:flex;align-items:flex-start;gap:14px;box-shadow:var(--sh-sm);}
+.rem-ico{font-size:18px;flex-shrink:0;margin-top:2px;color:var(--terra);}
+.rem-body{flex:1;}
+.rem-nm{font-size:14px;font-weight:500;color:var(--ink);}
+.rem-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;}
+.rem-time{font-size:11px;color:var(--muted);margin-top:5px;}
+.rem-acts{display:flex;gap:6px;flex-shrink:0;}
+.r-btn{background:none;border:none;cursor:pointer;font-size:19px;padding:2px;transition:transform .15s;}
+.r-btn:hover{transform:scale(1.2);}
+.food-panel{margin:0 24px 12px;border-radius:20px;overflow:hidden;border:1px solid var(--border2);}
+.food-ph{padding:14px 18px;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;}
+.food-ph.can{background:rgba(107,140,110,.09);color:var(--sage);}
+.food-ph.cant{background:rgba(181,103,58,.07);color:var(--terra);}
+.food-pb{padding:14px 18px;background:var(--card);display:flex;flex-wrap:wrap;gap:7px;}
+.food-pill{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;border:1px solid;}
+.food-pill.can{background:rgba(107,140,110,.08);border-color:rgba(107,140,110,.25);color:var(--sage);}
+.food-pill.cant{background:rgba(181,103,58,.07);border-color:rgba(181,103,58,.2);color:var(--terra);}
+.suppl-row{margin:0 24px 8px;background:var(--card);border:1px solid var(--border2);border-radius:12px;
+  padding:14px 18px;display:flex;align-items:center;gap:12px;box-shadow:var(--sh-sm);}
+.suppl-nm{font-size:14px;font-weight:500;flex:1;}
+.suppl-ds{font-size:12px;color:var(--muted);}
+
+/* PERFIL */
+.perf-hero{background:var(--ink);padding:40px 24px 32px;display:flex;align-items:center;gap:18px;}
+.perf-av{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.12);
+  color:white;font-size:22px;font-weight:600;display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(255,255,255,.2);}
+.perf-nm{color:white;font-family:'Libre Baskerville',serif;font-size:20px;font-weight:400;}
+.perf-em{color:rgba(255,255,255,.5);font-size:12px;margin-top:3px;}
+.stats-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border2);border-bottom:1px solid var(--border2);}
+.stat-tile{background:var(--card);padding:16px 10px;text-align:center;}
+.stat-v{font-family:'Libre Baskerville',serif;font-size:22px;font-weight:700;}
+.stat-v.ex{color:var(--gold);}
+.stat-v.med{color:var(--sage);}
+.stat-v.rec{color:var(--rose);}
+.stat-v.chk{color:var(--terra);}
+.stat-l{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+.perf-body{padding:24px;}
+.perf-sec{font-family:'Libre Baskerville',serif;font-size:16px;font-weight:400;margin:20px 0 12px;}
+.tag-opt{padding:8px 15px;border-radius:30px;border:1.5px solid var(--border);
+  font-family:'Jost',sans-serif;font-size:12px;font-weight:500;cursor:pointer;background:white;color:var(--ink2);transition:all .15s;}
+.tag-opt.on{background:rgba(181,103,58,.09);border-color:var(--terra);color:var(--terra);}
+.logout-lnk{display:flex;align-items:center;justify-content:center;gap:8px;background:none;border:none;
+  font-family:'Jost',sans-serif;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;
+  padding:16px;width:100%;margin-top:8px;letter-spacing:.04em;transition:color .2s;}
+.logout-lnk:hover{color:var(--terra);}
+
+/* ADMIN */
+.adm-wrap{display:flex;min-height:100vh;}
+.adm-side{width:230px;background:var(--ink);flex-shrink:0;padding:36px 0;
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.adm-brand{padding:0 24px 28px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:20px;}
+.adm-brand-nm{font-family:'Libre Baskerville',serif;font-size:19px;color:white;font-weight:400;}
+.adm-brand-sb{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-top:3px;}
+.adm-nb{display:flex;align-items:center;gap:12px;padding:12px 24px;color:rgba(255,255,255,.45);
+  cursor:pointer;font-size:13px;font-weight:500;border-left:2.5px solid transparent;
+  background:none;border-right:none;border-top:none;border-bottom:none;
+  font-family:'Jost',sans-serif;width:100%;text-align:left;transition:all .2s;letter-spacing:.03em;}
+.adm-nb:hover{color:rgba(255,255,255,.85);background:rgba(255,255,255,.04);}
+.adm-nb.on{color:white;background:rgba(181,103,58,.12);border-left-color:var(--terra);}
+.adm-side-foot{margin-top:auto;padding:24px;border-top:1px solid rgba(255,255,255,.07);}
+.adm-main{flex:1;background:#f5f0ea;overflow-y:auto;padding:40px 48px;}
+.adm-ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:32px;}
+.adm-pt{font-family:'Libre Baskerville',serif;font-size:30px;font-weight:400;}
+.adm-ps{font-size:12px;color:var(--muted);margin-top:4px;letter-spacing:.04em;}
+.adm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;}
+.adm-stat{background:white;border-radius:20px;padding:22px;display:flex;align-items:center;gap:16px;
+  box-shadow:var(--sh-sm);border:1px solid var(--border2);}
+.adm-stat-ic{width:48px;height:48px;border-radius:14px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.adm-stat-v{font-family:'Libre Baskerville',serif;font-size:30px;font-weight:700;color:var(--terra);line-height:1;}
+.adm-stat-l{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+.adm-card{background:white;border-radius:20px;padding:24px;margin-bottom:18px;box-shadow:var(--sh-sm);border:1px solid var(--border2);}
+.adm-card-t{font-family:'Libre Baskerville',serif;font-size:17px;font-weight:400;margin-bottom:18px;}
+.pt-row{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border2);}
+.pt-row:last-child{border-bottom:none;padding-bottom:0;}
+.pt-av{width:38px;height:38px;border-radius:50%;background:var(--grad);color:white;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.pt-info{flex:1;}
+.pt-nm{font-size:14px;font-weight:500;color:var(--ink);}
+.pt-mt{font-size:11px;color:var(--muted);margin-top:2px;}
+.pt-ph-tag{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;
+  background:rgba(181,103,58,.1);color:var(--terra);letter-spacing:.03em;white-space:nowrap;}
+.pt-acts{display:flex;gap:6px;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:10px 18px;border-radius:10px;border:none;cursor:pointer;
+  font-family:'Jost',sans-serif;font-size:13px;font-weight:600;transition:all .15s;letter-spacing:.03em;}
+.btn-pri{background:var(--grad);color:white;box-shadow:0 4px 16px rgba(181,103,58,.3);}
+.btn-pri:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(181,103,58,.38);}
+.btn-sec{background:white;color:var(--ink);border:1.5px solid var(--border);}
+.btn-sec:hover{background:var(--bg2);}
+.btn-gho{background:rgba(181,103,58,.08);color:var(--terra);border:1.5px solid rgba(181,103,58,.2);}
+.btn-gho:hover{background:rgba(181,103,58,.14);}
+.btn-dan{background:rgba(196,120,120,.1);color:var(--rose);border:1.5px solid rgba(196,120,120,.25);}
+.btn-sm{padding:7px 13px;font-size:11px;}
+.prog-wrap{background:var(--bg2);border-radius:20px;height:5px;overflow:hidden;margin-top:8px;}
+.prog-fill{height:100%;border-radius:20px;background:var(--grad);transition:width .5s cubic-bezier(.22,.68,0,1.2);}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(28,23,18,.6);backdrop-filter:blur(6px);
+  z-index:300;display:flex;align-items:center;justify-content:center;padding:24px;animation:fadeIn .2s ease;}
+.modal-box{background:var(--cream);border-radius:24px;width:100%;max-width:580px;max-height:88vh;
+  overflow-y:auto;padding:36px;box-shadow:var(--sh-lg);animation:pop .3s cubic-bezier(.22,.68,0,1.2);}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+.modal-ttl{font-family:'Libre Baskerville',serif;font-size:22px;font-weight:400;}
+.modal-cls{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:2px;transition:color .2s;}
+.modal-cls:hover{color:var(--ink);}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.divv{border:none;border-top:1px solid var(--border2);margin:20px 0;}
+.ml{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:16px 0 10px;}
+.t-inp{display:flex;gap:8px;margin-top:8px;}
+.t-inp input{flex:1;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;
+  font-family:'Jost',sans-serif;font-size:13px;outline:none;background:var(--bg);color:var(--ink);}
+.t-inp input:focus{border-color:var(--terra);}
+.tags-d{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.t-pill{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px;}
+.t-pill.g{background:rgba(107,140,110,.1);color:var(--sage);border:1px solid rgba(107,140,110,.25);}
+.t-pill.r{background:rgba(181,103,58,.08);color:var(--terra);border:1px solid rgba(181,103,58,.2);}
+.t-pill-x{cursor:pointer;opacity:.5;font-size:14px;transition:opacity .15s;}
+.t-pill-x:hover{opacity:1;}
+.s-row{display:flex;align-items:center;gap:10px;background:var(--bg2);border-radius:10px;padding:10px 14px;margin-bottom:7px;}
+.s-num{width:24px;height:24px;border-radius:50%;background:var(--terra);color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.s-txt{flex:1;font-size:13px;font-weight:500;}
+.s-del{background:none;border:none;cursor:pointer;color:var(--border);font-size:17px;transition:color .15s;}
+.s-del:hover{color:var(--terra);}
+.chk-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2);}
+.chk-row:last-child{border-bottom:none;}
+.chk-dt{font-size:12px;color:var(--muted);font-weight:500;width:82px;flex-shrink:0;}
+.chk-mood{font-size:18px;}
+.chk-pills{display:flex;gap:5px;flex-wrap:wrap;flex:1;}
+.chk-pill{padding:3px 9px;border-radius:8px;font-size:11px;font-weight:500;background:var(--bg2);color:var(--ink3);}
+.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--ink);color:white;
+  padding:12px 24px;border-radius:12px;font-size:13px;font-weight:500;letter-spacing:.03em;
+  z-index:500;animation:fadeUp .3s cubic-bezier(.22,.68,0,1.2);box-shadow:var(--sh-lg);white-space:nowrap;}
+
+/* JOURNEY PROGRESS CARD */
+.j-progress-card{margin:0 24px;background:var(--card);border-radius:20px;padding:22px;
+  border:1px solid var(--border2);box-shadow:var(--sh-sm);}
+.j-prog-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.j-prog-where{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.j-prog-phase{font-family:'Libre Baskerville',serif;font-size:17px;font-weight:400;margin-bottom:2px;}
+.j-prog-phase em{font-style:italic;color:var(--terra);}
+.j-prog-next{font-size:12px;color:var(--muted);margin-bottom:14px;}
+.j-prog-next strong{color:var(--terra);font-weight:600;}
+.j-prog-bar-wrap{background:var(--bg2);border-radius:20px;height:6px;overflow:hidden;margin-bottom:10px;}
+.j-prog-bar{height:100%;border-radius:20px;background:var(--grad);transition:width .6s cubic-bezier(.22,.68,0,1.2);}
+.j-prog-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);}
+.j-prog-days-done{font-weight:600;color:var(--terra);}
+
+/* WEEK MESSAGE */
+.week-msg{margin-top:10px;padding:10px 14px;background:linear-gradient(135deg,rgba(181,103,58,.07),rgba(196,150,90,.05));
+  border-radius:10px;border-left:3px solid var(--terra);font-size:13px;color:var(--ink2);line-height:1.5;}
+.week-msg strong{color:var(--terra);font-weight:600;}
+
+/* ACTIVITY CARD */
+.act-card{margin:0 24px 12px;background:var(--card);border:1px solid var(--border2);border-radius:20px;
+  overflow:hidden;box-shadow:var(--sh-sm);}
+.act-card-head{padding:16px 20px 12px;display:flex;align-items:center;gap:10px;}
+.act-card-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.act-card-icon.ex{background:rgba(196,150,90,.15);}
+.act-card-icon.med{background:rgba(107,140,110,.15);}
+.act-card-icon.food{background:rgba(196,120,120,.12);}
+.act-card-icon.exam{background:rgba(100,140,200,.12);}
+.act-card-q{font-family:'Libre Baskerville',serif;font-size:15px;font-weight:400;}
+.act-card-q em{font-style:italic;color:var(--terra);}
+.act-card-items{padding:0 12px 14px;display:flex;flex-direction:column;gap:7px;}
+.act-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;
+  background:var(--bg);cursor:pointer;border:1.5px solid transparent;
+  transition:all .15s;}
+.act-item:hover{border-color:var(--border);background:var(--bg2);}
+.act-item.done-item{background:rgba(107,140,110,.08);border-color:rgba(107,140,110,.25);}
+.act-item-ic{font-size:20px;flex-shrink:0;}
+.act-item-info{flex:1;}
+.act-item-name{font-size:13px;font-weight:500;color:var(--ink);}
+.act-item-dur{font-size:11px;color:var(--muted);margin-top:2px;}
+.act-item-check{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;}
+.act-item.done-item .act-item-check{background:var(--sage);border-color:var(--sage);color:white;font-size:11px;}
+
+/* FOOD CARD INLINE */
+.food-inline{padding:0 12px 14px;}
+.food-section{margin-bottom:12px;}
+.food-sec-label{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  padding:0 6px;margin-bottom:8px;}
+.food-sec-label.can{color:var(--sage);}
+.food-sec-label.cant{color:var(--terra);}
+.food-pills-row{display:flex;flex-wrap:wrap;gap:6px;padding:0 6px;}
+.fp{padding:6px 13px;border-radius:20px;font-size:12px;font-weight:500;border:1px solid;}
+.fp.can{background:rgba(107,140,110,.08);border-color:rgba(107,140,110,.25);color:var(--sage);}
+.fp.cant{background:rgba(181,103,58,.07);border-color:rgba(181,103,58,.2);color:var(--terra);}
+
+/* WATER TRACKER */
+.water-bar{margin:0 24px 16px;background:linear-gradient(135deg,rgba(74,144,217,.07),rgba(74,144,217,.03));
+  border:1.5px solid rgba(74,144,217,.2);border-radius:20px;padding:18px 20px;box-shadow:var(--sh-sm);}
+.water-bar-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.water-bar-title{font-family:'Libre Baskerville',serif;font-size:15px;font-weight:400;}
+.water-bar-title em{font-style:italic;color:#4a90d9;}
+.water-count-wrap{display:flex;align-items:baseline;gap:4px;}
+.water-count{font-family:'Libre Baskerville',serif;font-size:26px;font-weight:700;color:#4a90d9;line-height:1;}
+.water-count-of{font-size:13px;color:var(--muted);font-family:'Jost',sans-serif;}
+.water-cups{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;}
+.water-cup{width:34px;height:34px;border-radius:9px;border:1.5px solid rgba(74,144,217,.2);
+  background:white;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:16px;transition:all .2s;flex-shrink:0;}
+.water-cup.filled{background:rgba(74,144,217,.15);border-color:rgba(74,144,217,.5);}
+.water-cup:active{transform:scale(.88);}
+.water-cta{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;
+  background:rgba(74,144,217,.12);border:1.5px solid rgba(74,144,217,.3);
+  border-radius:12px;cursor:pointer;font-family:'Jost',sans-serif;
+  font-size:14px;font-weight:600;color:#4a90d9;transition:all .2s;width:100%;}
+.water-cta:hover{background:rgba(74,144,217,.2);transform:translateY(-1px);}
+.water-msg{font-size:11px;color:var(--muted);font-style:italic;margin-top:8px;text-align:center;}
+
+/* SYMPTOM POPUP */
+.sym-popup-overlay{position:fixed;inset:0;background:rgba(28,23,18,.5);backdrop-filter:blur(6px);
+  z-index:300;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .3s ease;}
+.sym-popup{background:var(--cream);border-radius:28px 28px 0 0;width:100%;max-width:430px;
+  padding:24px 24px 40px;animation:fadeUp .4s cubic-bezier(.22,.68,0,1.2);}
+.sym-popup-handle{width:36px;height:3.5px;background:var(--border);border-radius:4px;margin:0 auto 20px;}
+.sym-popup-title{font-family:'Libre Baskerville',serif;font-size:20px;font-weight:400;margin-bottom:6px;}
+.sym-popup-title em{font-style:italic;color:var(--terra);}
+.sym-popup-sub{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6;}
+.sym-popup-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+.sym-ptag{padding:9px 16px;border-radius:30px;border:1.5px solid var(--border);
+  font-family:'Jost',sans-serif;font-size:13px;font-weight:500;
+  cursor:pointer;background:white;color:var(--ink2);transition:all .15s;}
+.sym-ptag.on{background:rgba(181,103,58,.09);border-color:var(--terra);color:var(--terra);}
+.sym-active-strip{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;min-height:0;}
+.sym-active-chip{padding:5px 11px;border-radius:20px;font-size:12px;font-weight:500;
+  background:rgba(181,103,58,.1);border:1px solid rgba(181,103,58,.2);color:var(--terra);
+  display:flex;align-items:center;gap:5px;cursor:pointer;transition:all .15s;}
+.sym-active-chip:hover{background:rgba(181,103,58,.18);}
+.sym-active-chip .x-ic{font-size:13px;opacity:.6;}
+
+/* RECIPE MODAL */
+.recipe-sheet{background:var(--cream);border-radius:28px 28px 0 0;width:100%;max-width:430px;
+  max-height:85vh;overflow-y:auto;padding:24px 24px 44px;animation:fadeUp .35s cubic-bezier(.22,.68,0,1.2);}
+.recipe-img{width:100%;height:160px;background:linear-gradient(135deg,rgba(181,103,58,.12),rgba(196,150,90,.08));
+  border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:52px;margin-bottom:18px;}
+.recipe-title{font-family:'Libre Baskerville',serif;font-size:20px;font-weight:400;margin-bottom:4px;}
+.recipe-title em{font-style:italic;color:var(--terra);}
+.recipe-meta{display:flex;align-items:center;gap:16px;margin-bottom:20px;}
+.recipe-tag{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);display:flex;align-items:center;gap:4px;}
+.recipe-section{font-family:'Libre Baskerville',serif;font-size:15px;font-weight:400;margin:18px 0 10px;}
+.recipe-ing{display:flex;flex-direction:column;gap:8px;}
+.recipe-ing-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg2);border-radius:10px;font-size:13px;}
+.recipe-steps{display:flex;flex-direction:column;gap:10px;}
+.recipe-step{display:flex;gap:12px;align-items:flex-start;}
+.recipe-step-num{width:24px;height:24px;border-radius:50%;background:var(--terra);color:white;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+.recipe-step-txt{font-size:13px;color:var(--ink2);line-height:1.6;flex:1;}
+@media(max-width:640px){
+  .adm-wrap{flex-direction:column;}
+  .adm-side{width:100%;height:auto;position:relative;}
+  .adm-main{padding:24px 16px;}
+  .adm-stats{grid-template-columns:1fr;}
+  .grid2{grid-template-columns:1fr;}
+  .modal-box{padding:24px;}
+  .pt-card-body{grid-template-columns:repeat(2,1fr);}
+}
+.adm-tab-row{display:flex;gap:2px;background:var(--bg2);border-radius:14px;padding:4px;margin-bottom:28px;}
+.adm-tab{flex:1;padding:9px 14px;border:none;border-radius:10px;background:none;
+  font-family:'Jost',sans-serif;font-size:13px;font-weight:500;color:var(--muted);
+  cursor:pointer;transition:all .2s;letter-spacing:.03em;}
+.adm-tab.on{background:white;color:var(--ink);box-shadow:var(--sh-sm);font-weight:600;}
+
+/* patient cards in admin */
+.pt-card{background:white;border:1px solid var(--border2);border-radius:20px;padding:20px 24px;
+  margin-bottom:14px;box-shadow:var(--sh-sm);transition:box-shadow .2s;}
+.pt-card:hover{box-shadow:var(--sh-md);}
+.pt-card-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+.pt-card-av{width:46px;height:46px;border-radius:50%;background:var(--grad);
+  color:white;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.pt-card-info{flex:1;}
+.pt-card-nm{font-size:16px;font-weight:600;color:var(--ink);}
+.pt-card-mt{font-size:12px;color:var(--muted);margin-top:2px;}
+.pt-card-actions{display:flex;gap:8px;align-items:center;}
+.pt-card-body{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.pt-mini-stat{background:var(--bg2);border-radius:12px;padding:12px 14px;text-align:center;}
+.pt-mini-stat-v{font-family:'Libre Baskerville',serif;font-size:20px;font-weight:700;}
+.pt-mini-stat-v.ex{color:var(--gold);}
+.pt-mini-stat-v.med{color:var(--sage);}
+.pt-mini-stat-v.ci{color:var(--terra);}
+.pt-mini-stat-v.ph{color:#7a9dc4;}
+.pt-mini-stat-l{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-top:3px;}
+.pt-card-prog{margin-bottom:6px;}
+.pt-card-prog-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.pt-card-prog-lbl strong{color:var(--terra);font-weight:600;}
+
+/* alert banner */
+.alert-banner{display:flex;align-items:center;gap:12px;background:rgba(196,120,120,.08);
+  border:1px solid rgba(196,120,120,.2);border-radius:14px;padding:14px 18px;margin-bottom:10px;}
+.alert-icon{font-size:20px;flex-shrink:0;}
+.alert-txt{flex:1;font-size:13px;color:var(--ink2);}
+.alert-txt strong{color:var(--rose);font-weight:600;}
+.alert-action{font-size:12px;font-weight:600;color:var(--terra);background:none;border:none;cursor:pointer;
+  font-family:'Jost',sans-serif;text-decoration:underline;text-underline-offset:2px;}
+
+/* checkin detail view */
+.chk-detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;}
+.chk-detail-box{background:var(--bg2);border-radius:12px;padding:14px;text-align:center;}
+.chk-detail-val{font-family:'Libre Baskerville',serif;font-size:22px;font-weight:700;color:var(--terra);}
+.chk-detail-lbl{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;}
+.chk-timeline{display:flex;flex-direction:column;gap:0;}
+.chk-tl-item{display:flex;gap:14px;position:relative;}
+.chk-tl-item:not(:last-child)::before{content:'';position:absolute;left:15px;top:32px;bottom:0;width:2px;background:var(--border2);}
+.chk-tl-dot{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--bg2);border:2px solid var(--border2);position:relative;z-index:1;}
+.chk-tl-dot.good{background:rgba(107,140,110,.12);border-color:var(--sage);}
+.chk-tl-dot.bad{background:rgba(196,120,120,.1);border-color:var(--rose);}
+.chk-tl-content{flex:1;padding:6px 0 20px;}
+.chk-tl-date{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;}
+.chk-tl-mood{font-size:14px;font-weight:500;margin-top:2px;}
+.chk-tl-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+.chk-tl-tag{padding:3px 9px;border-radius:8px;font-size:11px;font-weight:500;background:var(--bg2);color:var(--ink3);}
+.chk-tl-tag.pos{background:rgba(107,140,110,.1);color:var(--sage);}
+.chk-tl-tag.neg{background:rgba(196,120,120,.08);color:var(--rose);}
+.chk-tl-notes{font-size:12px;color:var(--muted);margin-top:6px;font-style:italic;line-height:1.5;}
+
+/* week heatmap */
+.week-heatmap{display:flex;gap:3px;flex-wrap:wrap;margin:12px 0;}
+.hm-day{width:18px;height:18px;border-radius:4px;background:var(--bg2);transition:all .2s;}
+.hm-day.done{background:var(--terra);opacity:.8;}
+.hm-day.today{outline:2px solid var(--terra);outline-offset:1px;}
+
+/* modal tabs */
+.modal-tabs{display:flex;gap:2px;background:var(--bg2);border-radius:12px;padding:3px;margin-bottom:22px;}
+.modal-tab{flex:1;padding:8px 12px;border:none;border-radius:9px;background:none;
+  font-family:'Jost',sans-serif;font-size:12px;font-weight:600;color:var(--muted);
+  cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.04em;}
+.modal-tab.on{background:white;color:var(--ink);box-shadow:var(--sh-sm);}
+
+/* advance phase confirm */
+.phase-confirm{background:linear-gradient(135deg,rgba(181,103,58,.08),rgba(196,150,90,.05));
+  border:1px solid rgba(181,103,58,.2);border-radius:16px;padding:20px;margin-bottom:16px;}
+.phase-confirm-title{font-family:'Libre Baskerville',serif;font-size:17px;margin-bottom:6px;}
+.phase-confirm-txt{font-size:13px;color:var(--ink3);line-height:1.6;margin-bottom:16px;}
+.phase-confirm-btns{display:flex;gap:10px;}
+
+/* symptom frequency */
+.sym-freq-item{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.sym-freq-bar-wrap{flex:1;background:var(--bg2);border-radius:20px;height:6px;overflow:hidden;}
+.sym-freq-bar{height:100%;border-radius:20px;background:var(--grad);}
+.sym-freq-name{font-size:12px;font-weight:500;width:130px;flex-shrink:0;}
+.sym-freq-count{font-size:12px;color:var(--muted);font-weight:600;width:24px;text-align:right;flex-shrink:0;}
+</style>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const {useState, useEffect} = React;
+
+const PHASES = [
+  {id:1,name:'Autoconhecimento',months:'Meses 1–3',icon:'✦',desc:'Nesta fase, você vai mapear seus sintomas, entender seu corpo e criar uma base sólida para sua transformação.',days:90},
+  {id:2,name:'Desparasitação',months:'Meses 4–6',icon:'◈',desc:'Fase de limpeza profunda do organismo, removendo parasitas e toxinas acumuladas ao longo dos anos.',days:90},
+  {id:3,name:'Detoxificação',months:'Meses 7–9',icon:'◇',desc:'Purificação do fígado, intestino e órgãos vitais para restaurar o equilíbrio interno.',days:90},
+  {id:4,name:'Energização',months:'Meses 10–12',icon:'◉',desc:'Reconstrução celular, hormonal e energética para atingir sua melhor versão.',days:90},
+];
+const SYMPTOMS = ['Ondas de calor','Insônia','Ansiedade','Fadiga','Dor de cabeça','Irritabilidade','Ressecamento','Inchaço','Ganho de peso','Névoa mental'];
+const OBJECTIVES = ['Mais energia','Melhor sono','Equilíbrio hormonal','Perda de peso','Clareza mental','Menos sintomas'];
+const HORMONAL = ['Menstruação','Folicular','Ovulação','Lútea','Perimenopausa','Menopausa','Pós-menopausa'];
+const MOODS = [{e:'😊',l:'Ótimo'},{e:'🙂',l:'Bom'},{e:'😐',l:'Regular'},{e:'😕',l:'Ruim'},{e:'😞',l:'Péssimo'}];
+const WDAYS = ['D','S','T','Q','Q','S','S'];
+
+const ALL_EXERCISES = [
+  {phase:1,name:'Caminhada Consciente',duration:'30 min',icon:'🚶‍♀️'},
+  {phase:1,name:'Yoga Restaurativa',duration:'40 min',icon:'🧘‍♀️'},
+  {phase:1,name:'Alongamento Matinal',duration:'15 min',icon:'🌅'},
+  {phase:2,name:'Massagem Abdominal',duration:'15 min',icon:'🤲'},
+  {phase:2,name:'Yoga para Digestão',duration:'30 min',icon:'🧘‍♀️'},
+  {phase:2,name:'Caminhada Pós-Refeição',duration:'20 min',icon:'🚶‍♀️'},
+  {phase:3,name:'Hot Yoga Suave',duration:'45 min',icon:'🔥'},
+  {phase:3,name:'Escovação Linfática',duration:'10 min',icon:'🪥'},
+  {phase:3,name:'Hidroginástica',duration:'50 min',icon:'💧'},
+  {phase:4,name:'Dança Livre',duration:'30 min',icon:'💃'},
+  {phase:4,name:'Qi Gong Matinal',duration:'25 min',icon:'☯️'},
+  {phase:4,name:'Treino Funcional Adaptado',duration:'40 min',icon:'⚡'},
+];
+
+const ALL_MEDITATIONS = [
+  {phase:1,name:'Escaneamento Corporal',duration:'20 min',icon:'◇'},
+  {phase:1,name:'Respiração 4-7-8',duration:'10 min',icon:'◇'},
+  {phase:1,name:'Diário de Gratidão Meditativo',duration:'15 min',icon:'◇'},
+  {phase:2,name:'Meditação de Limpeza',duration:'20 min',icon:'◇'},
+  {phase:2,name:'Respiração Purificadora',duration:'15 min',icon:'◇'},
+  {phase:3,name:'Meditação do Fígado',duration:'20 min',icon:'◇'},
+  {phase:3,name:'Banho de Floresta Mental',duration:'25 min',icon:'◇'},
+  {phase:4,name:'Meditação dos Chakras',duration:'30 min',icon:'◇'},
+  {phase:4,name:'Afirmações de Vitalidade',duration:'15 min',icon:'◇'},
+];
+
+const ALL_RECIPES = [
+  {phase:1,name:'Chá de Sálvia para Ondas de Calor',duration:'10 min',icon:'🍵',
+   ingredients:['2 col chá de sálvia seca','500ml de água fervente','1 col mel (opcional)','Suco de ½ limão'],
+   steps:['Ferva a água e adicione as folhas de sálvia.','Tampe e infusione por 10 minutos.','Coe, adoce com mel e adicione o limão.','Beba morno, 1 a 2 vezes ao dia.']},
+  {phase:1,name:'Bowl Antinflamatório',duration:'20 min',icon:'🥗',
+   ingredients:['1 xícara de quinoa cozida','½ abacate fatiado','Punhado de espinafre fresco','1 cenoura ralada','1 col sopa de azeite','Sal e cúrcuma a gosto'],
+   steps:['Cozinhe a quinoa conforme a embalagem.','Monte o bowl com quinoa como base.','Disponha espinafre, cenoura e abacate.','Regue com azeite e tempere com sal e cúrcuma.']},
+  {phase:1,name:'Smoothie Hormonal',duration:'5 min',icon:'🥤',
+   ingredients:['1 banana congelada','1 col sopa de linhaça dourada','200ml de leite vegetal','1 col chá de maca peruana','1 tâmara sem caroço'],
+   steps:['Coloque todos os ingredientes no liquidificador.','Bata por 1 minuto até homogêneo.','Sirva imediatamente no café da manhã.']},
+  {phase:2,name:'Suco Verde Antiparasitário',duration:'10 min',icon:'🥬',
+   ingredients:['½ pepino','1 limão (suco)','2 folhas de couve','1 col chá de gengibre ralado','200ml de água de coco'],
+   steps:['Lave bem todos os vegetais.','Bata tudo no liquidificador com água de coco.','Coe se preferir mais líquido.','Beba em jejum pela manhã.']},
+  {phase:2,name:'Sopa Detox de Abóbora com Sementes',duration:'40 min',icon:'🎃',
+   ingredients:['500g de abóbora cabotiá','1 cebola','2 dentes de alho','700ml de caldo de legumes','Mix de sementes','Cúrcuma, sal e pimenta'],
+   steps:['Refogue cebola e alho no azeite.','Adicione a abóbora picada e o caldo.','Cozinhe 20 min até amolecer.','Bata no liquidificador, tempere e sirva com sementes.']},
+  {phase:2,name:'Chá de Hortelã e Cravo',duration:'10 min',icon:'🍵',
+   ingredients:['1 punhado de hortelã fresca','4 cravos-da-índia','500ml de água','Mel a gosto'],
+   steps:['Ferva a água com os cravos por 5 min.','Adicione a hortelã, tampe e infusione.','Coe e adoce com mel.','Beba após as refeições.']},
+  {phase:3,name:'Água Detox de Pepino e Limão',duration:'5 min',icon:'💧',
+   ingredients:['½ pepino fatiado','1 limão fatiado','Folhas de hortelã','1 litro de água filtrada','Gelo a gosto'],
+   steps:['Coloque todos os ingredientes na jarra.','Deixe gelar por pelo menos 2 horas.','Beba ao longo do dia.']},
+  {phase:3,name:'Salada Detox Arco-Íris',duration:'20 min',icon:'🌈',
+   ingredients:['Rúcula e espinafre','1 beterraba crua ralada','Cenoura ralada','½ pimentão amarelo','Sementes de romã','Molho: azeite + limão + mostarda'],
+   steps:['Lave e prepare todos os vegetais.','Monte com folhas como base.','Distribua os vegetais coloridos.','Misture o molho e regue antes de servir.']},
+  {phase:3,name:'Shot Matinal de Cúrcuma',duration:'5 min',icon:'⚡',
+   ingredients:['1 col chá de cúrcuma em pó','½ col chá de gengibre fresco','Suco de ½ limão','1 pitada de pimenta-preta','30ml de água morna'],
+   steps:['Misture todos os ingredientes.','Beba de uma só vez em jejum.','Aguarde 20 min antes do café.']},
+  {phase:4,name:'Bowl de Açaí Energizante',duration:'10 min',icon:'🫐',
+   ingredients:['200g de polpa de açaí','1 banana','Granola sem açúcar','Frutas frescas','Mel e coco ralado'],
+   steps:['Bata o açaí com a banana no liquidificador.','Despeje em uma tigela funda.','Cubra com granola, frutas, mel e coco.']},
+  {phase:4,name:'Golden Milk (Leite Dourado)',duration:'10 min',icon:'✨',
+   ingredients:['250ml de leite vegetal','1 col chá de cúrcuma','½ col chá de canela','1 col chá de mel','1 pitada de pimenta-preta'],
+   steps:['Aqueça o leite em fogo baixo.','Adicione todos os ingredientes e misture.','Bata com mixer para criar espuma.','Sirva quente antes de dormir.']},
+  {phase:4,name:'Snack de Castanhas e Frutas Secas',duration:'5 min',icon:'🌰',
+   ingredients:['Castanha-do-pará (2 un)','Nozes (4 un)','Amêndoas (6 un)','Tâmaras (2 un)','Damasco seco (3 un)'],
+   steps:['Separe as porções indicadas.','Monte em um potinho para o dia.','Ideal como lanche entre refeições.']},
+];
+
+function getPhaseContent(allItems, currentPhase, countPerPhase) {
+  let result = [];
+  for(let ph=1; ph<=currentPhase; ph++){
+    const items = allItems.filter(x=>x.phase===ph).slice(0, countPerPhase[ph-1]||3);
+    result = result.concat(items);
+  }
+  return result;
+}
+
+// ── SEED DATA (gravado no Firestore apenas se o banco estiver vazio) ──
+const SEED_PATIENT = {
+  id:'p1',name:'Ana Beatriz Costa',cpf:'111.111.111-11',email:'ana@email.com',password:'vita@2024',
+  dob:'1985-03-12',hormonalPhase:'Perimenopausa',
+  symptoms:['Ondas de calor','Insônia','Fadiga'],objectives:['Mais energia','Melhor sono'],
+  currentPhase:1,unlockedPhases:[1],
+  canEat:['Frango grelhado','Arroz integral','Brócolis','Ovos','Batata-doce'],
+  cantEat:['Glúten','Laticínios','Açúcar'],
+  supplements:[{name:'Vitamina D3 + K2',dose:'5000 UI/dia'},{name:'Magnésio Quelato',dose:'300mg/noite'},{name:'Ômega-3',dose:'2g/dia'}],
+  exams:[{name:'Perfil Hormonal Feminino',month:'Mês 1',icon:'◈'},{name:'Painel Tireoidiano',month:'Mês 1',icon:'◈'}],
+  reminders:[{id:'r1',title:'Check-in diário',desc:'Registre como você está se sentindo hoje',time:'20:00',done:false}],
+  checkins:[],stats:{exercises:0,meditations:0,recipes:0,checkins:0},
+};
+
+// ── FIREBASE HELPERS ──
+const fbSavePatient   = p  => window.__vita?.savePatient(p);
+const fbDeletePatient = id => window.__vita?.deletePatient(id);
+
+// ── APP ── Firebase-powered
+function App(){
+  // Inicia com localStorage como fallback imediato
+  const [patients,setPatients]=useState(()=>{
+    try{
+      const s=localStorage.getItem('vita_v3_cache');
+      if(s) return JSON.parse(s);
+    }catch{}
+    return [SEED_PATIENT];
+  });
+  const [fbReady,setFbReady]=useState(false);
+  const [user,setUser]=useState(()=>{
+    try{ const s=localStorage.getItem('vita_session'); if(s) return JSON.parse(s); }catch{}
+    return null;
+  });
+  const [toast,setToast]=useState(null);
+  const flash=m=>{setToast(m);setTimeout(()=>setToast(null),2600);};
+
+  // ── Bootstrap Firebase em background — app já abre sem esperar ──
+  useEffect(()=>{
+    const init = async () => {
+      try {
+        // Tenta conectar ao Firestore
+        const data = await Promise.race([
+          window.__vita.loadPatients(),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000))
+        ]);
+        if(data.length === 0){
+          await window.__vita.savePatient(SEED_PATIENT);
+          setPatients([SEED_PATIENT]);
+          localStorage.setItem('vita_v3_cache', JSON.stringify([SEED_PATIENT]));
+        } else {
+          setPatients(data);
+          localStorage.setItem('vita_v3_cache', JSON.stringify(data));
+        }
+        setFbReady(true);
+        window.__vitaConnected = true;
+        // onSnapshot: escuta mudanças em tempo real no Firestore.
+        window.__vita.subscribePatients(updated => {
+          setPatients(updated);
+          localStorage.setItem('vita_v3_cache', JSON.stringify(updated));
+        });
+        console.log('✅ Firebase conectado — sincronização em tempo real ativa');
+      } catch(e){
+        console.warn('Firebase indisponível, usando cache local:', e.message);
+        // App continua funcionando com localStorage mesmo sem Firebase
+      }
+    };
+    // Dispara imediatamente se Firebase já carregou, senão aguarda
+    if(window.__vitaReady){ init(); }
+    else { window.addEventListener('vitaReady', ()=>init(), {once:true}); }
+  },[]);
+
+  // ── setP: só atualiza estado local (Admin já chama fbSavePatient diretamente) ──
+  const setP = (arr) => {
+    setPatients(arr);
+    localStorage.setItem('vita_v3_cache', JSON.stringify(arr));
+  };
+  const updP = async (id,d) => {
+    const updated = patients.map(p=>p.id===id?{...p,...d}:p);
+    setPatients(updated);
+    localStorage.setItem('vita_v3_cache', JSON.stringify(updated));
+    const changed = updated.find(p=>p.id===id);
+    if(changed) fbSavePatient(changed).catch(console.error);
+  };
+
+  const handleLogin=(u,remember)=>{ setUser(u); if(remember) localStorage.setItem('vita_session',JSON.stringify(u)); };
+  const handleLogout=()=>{ localStorage.removeItem('vita_session'); setUser(null); };
+
+  const syncBadge = <div style={{position:'fixed',bottom:12,right:12,zIndex:9999,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.55)',borderRadius:20,padding:'5px 10px',fontSize:11,color:'white',fontFamily:'Jost,sans-serif',backdropFilter:'blur(6px)'}}>
+    <div style={{width:8,height:8,borderRadius:'50%',background:fbReady?'#4ade80':'#f87171',boxShadow:fbReady?'0 0 6px #4ade80':'0 0 6px #f87171'}}/>
+    {fbReady ? 'Firebase conectado' : 'Sem conexão Firebase'}
+  </div>;
+
+  if(!user) return <>{syncBadge}{React.createElement(Login,{patients,onLogin:handleLogin,flash})}{toast&&<div className="toast">{toast}</div>}</>;
+  if(user.type==='admin') return <>{syncBadge}{React.createElement(Admin,{patients,setP,onLogout:handleLogout,flash})}{toast&&<div className="toast">{toast}</div>}</>;
+  const pat=patients.find(p=>p.id===user.id);
+  if(!pat){ handleLogout(); return null; }
+  return <>{React.createElement(PatientApp,{patient:pat,upd:d=>updP(pat.id,d),onLogout:handleLogout,flash})}{toast&&<div className="toast">{toast}</div>}</>;
+}
+
+// ── LOGIN ──
+function Login({patients,onLogin,flash}){
+  const [mode,setMode]=useState(null);
+  const [email,setEmail]=useState('');
+  const [pw,setPw]=useState('');
+  const [remember,setRemember]=useState(true);
+  const [err,setErr]=useState('');
+  const go=()=>{
+    setErr('');
+    const em=email.trim().toLowerCase();
+    if(mode==='admin'){
+      if(em==='admin@bio.com'&&pw==='clinvida2026'){ onLogin({type:'admin'},remember); return; }
+      setErr('E-mail ou senha incorretos'); return;
+    }
+    const pt=patients.find(p=>p.email&&p.email.toLowerCase()===em);
+    if(!pt){ setErr('E-mail não encontrado'); return; }
+    if(pt.password!==pw){ setErr('Senha incorreta'); return; }
+    onLogin({type:'patient',id:pt.id},remember);
+  };
+  const back=()=>{ setMode(null); setEmail(''); setPw(''); setErr(''); };
+
+  if(!mode) return (
+    <div className="lg-bg" style={{flexDirection:'column',gap:0}}>
+      <div style={{textAlign:'center',marginBottom:40,animation:'fadeUp .5s both'}}>
+        <div style={{width:56,height:56,background:'var(--grad)',borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,margin:'0 auto 16px',boxShadow:'0 8px 24px rgba(181,103,58,.3)'}}>🌿</div>
+        <div style={{fontFamily:'Libre Baskerville,serif',fontSize:26,color:'var(--ink)'}}>Bio Vitalie</div>
+        <div style={{fontSize:11,letterSpacing:'.2em',textTransform:'uppercase',color:'var(--muted)',marginTop:4}}>Saúde Integrativa</div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:14,width:'100%',maxWidth:380,animation:'fadeUp .5s .1s both'}}>
+        <button onClick={()=>setMode('patient')} style={{background:'white',border:'1.5px solid var(--border2)',borderRadius:22,padding:'24px 28px',cursor:'pointer',textAlign:'left',boxShadow:'var(--sh-sm)',transition:'all .2s',fontFamily:'Jost,sans-serif'}}
+          onMouseOver={e=>{e.currentTarget.style.borderColor='var(--terra)';e.currentTarget.style.boxShadow='0 8px 28px rgba(181,103,58,.15)';}}
+          onMouseOut={e=>{e.currentTarget.style.borderColor='var(--border2)';e.currentTarget.style.boxShadow='var(--sh-sm)';}}>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <div style={{width:46,height:46,background:'linear-gradient(135deg,rgba(181,103,58,.12),rgba(196,150,90,.1))',borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>🌸</div>
+            <div>
+              <div style={{fontFamily:'Libre Baskerville,serif',fontSize:17,fontWeight:400,color:'var(--ink)',marginBottom:3}}>Sou paciente</div>
+              <div style={{fontSize:12,color:'var(--muted)',fontWeight:400}}>Acesse seu programa de saúde personalizado</div>
+            </div>
+            <div style={{marginLeft:'auto',color:'var(--muted)',fontSize:20}}>›</div>
+          </div>
+        </button>
+        <button onClick={()=>setMode('admin')} style={{background:'none',border:'none',cursor:'pointer',fontFamily:'Jost,sans-serif',padding:'10px 0',display:'flex',alignItems:'center',gap:8,color:'var(--muted)',fontSize:12,letterSpacing:'.06em',textTransform:'uppercase',fontWeight:500,transition:'color .2s'}}
+          onMouseOver={e=>e.currentTarget.style.color='var(--ink)'}
+          onMouseOut={e=>e.currentTarget.style.color='var(--muted)'}>
+          <span style={{fontFamily:'Georgia,serif',fontSize:14}}>◈</span> Acesso da clínica
+        </button>
+      </div>
+    </div>
+  );
+
+  if(mode==='patient') return (
+    <div className="lg-bg">
+      <div className="lg-card" style={{animation:'pop .4s both'}}>
+        <button onClick={back} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontFamily:'Jost,sans-serif',fontSize:13,marginBottom:28,padding:0,display:'flex',alignItems:'center',gap:6}}>← Voltar</button>
+        <div className="lg-logotype"><div className="lg-emblem">🌸</div><div className="lg-brand">Bem-vinda<span>Acesse seu programa</span></div></div>
+        <h1 className="lg-h1">Olá, <em>bom te ver</em></h1>
+        <p className="lg-sub">Use o <strong>e-mail</strong> cadastrado e a <strong>senha enviada via WhatsApp</strong> na confirmação da sua assinatura.</p>
+        <div className="fl"><label>E-mail</label><input className="fi" type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()} autoFocus/></div>
+        <div className="fl"><label>Senha</label><input className="fi" type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}/></div>
+        <label style={{display:'flex',alignItems:'center',gap:10,marginBottom:18,cursor:'pointer'}}>
+          <div onClick={()=>setRemember(!remember)} style={{width:22,height:22,borderRadius:6,flexShrink:0,border:`2px solid ${remember?'var(--terra)':'var(--border)'}`,background:remember?'var(--terra)':'white',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',cursor:'pointer'}}>
+            {remember&&<span style={{color:'white',fontSize:13,fontWeight:700}}>✓</span>}
+          </div>
+          <span style={{fontSize:13,color:'var(--ink2)',userSelect:'none'}}>Manter sessão aberta — não pedir login toda vez</span>
+        </label>
+        {err&&<div style={{background:'rgba(196,120,120,.1)',border:'1px solid rgba(196,120,120,.25)',borderRadius:10,padding:'10px 14px',fontSize:13,color:'var(--rose)',marginBottom:14}}>⚠ {err}</div>}
+        <button className="btn-t" onClick={go}>Entrar no programa</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:24,background:'var(--ink)'}}>
+      <div style={{background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:28,padding:'48px 44px',width:'100%',maxWidth:400,animation:'pop .4s both'}}>
+        <button onClick={back} style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,.4)',fontFamily:'Jost,sans-serif',fontSize:13,marginBottom:28,padding:0,display:'flex',alignItems:'center',gap:6}}>← Voltar</button>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:36}}>
+          <div style={{width:44,height:44,background:'rgba(255,255,255,.08)',borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Georgia,serif',fontSize:20,color:'rgba(255,255,255,.6)'}}>◈</div>
+          <div><div style={{fontFamily:'Libre Baskerville,serif',fontSize:20,color:'white',fontWeight:400}}>Bio Vitalie</div><div style={{fontSize:10,letterSpacing:'.18em',textTransform:'uppercase',color:'rgba(255,255,255,.35)',marginTop:2}}>Painel Administrativo</div></div>
+        </div>
+        <h1 style={{fontFamily:'Libre Baskerville,serif',fontSize:24,fontWeight:400,color:'white',marginBottom:6}}>Acesso <em style={{fontStyle:'italic',color:'var(--gold)'}}>restrito</em></h1>
+        <p style={{fontSize:13,color:'rgba(255,255,255,.4)',marginBottom:28}}>Somente para profissionais autorizados</p>
+        <div style={{marginBottom:16}}>
+          <label style={{display:'block',fontSize:10,fontWeight:600,letterSpacing:'.14em',textTransform:'uppercase',color:'rgba(255,255,255,.35)',marginBottom:8}}>E-mail</label>
+          <input style={{width:'100%',padding:'14px 18px',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:12,background:'rgba(255,255,255,.06)',fontFamily:'Jost,sans-serif',fontSize:14,color:'white',outline:'none'}} type="email" placeholder="admin@biovitalie.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()} autoFocus onFocus={e=>e.target.style.borderColor='rgba(196,150,90,.6)'} onBlur={e=>e.target.style.borderColor='rgba(255,255,255,.1)'}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={{display:'block',fontSize:10,fontWeight:600,letterSpacing:'.14em',textTransform:'uppercase',color:'rgba(255,255,255,.35)',marginBottom:8}}>Senha</label>
+          <input style={{width:'100%',padding:'14px 18px',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:12,background:'rgba(255,255,255,.06)',fontFamily:'Jost,sans-serif',fontSize:14,color:'white',outline:'none'}} type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()} onFocus={e=>e.target.style.borderColor='rgba(196,150,90,.6)'} onBlur={e=>e.target.style.borderColor='rgba(255,255,255,.1)'}/>
+        </div>
+        {err&&<div style={{background:'rgba(196,120,120,.12)',border:'1px solid rgba(196,120,120,.25)',borderRadius:10,padding:'10px 14px',fontSize:13,color:'#e8a0a0',marginBottom:16}}>⚠ {err}</div>}
+        <label style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,cursor:'pointer'}}>
+          <div onClick={()=>setRemember(!remember)} style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${remember?'var(--gold)':'rgba(255,255,255,.2)'}`,background:remember?'var(--gold)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s',cursor:'pointer'}}>
+            {remember&&<span style={{color:'white',fontSize:12,fontWeight:700}}>✓</span>}
+          </div>
+          <span style={{fontSize:12,color:'rgba(255,255,255,.45)',userSelect:'none'}}>Manter sessão aberta</span>
+        </label>
+        <button onClick={go} style={{width:'100%',padding:15,background:'linear-gradient(135deg,var(--terra),var(--gold))',border:'none',borderRadius:12,fontFamily:'Jost,sans-serif',fontSize:14,fontWeight:600,letterSpacing:'.06em',color:'white',cursor:'pointer',boxShadow:'0 6px 24px rgba(181,103,58,.4)',transition:'all .15s'}}
+          onMouseOver={e=>{e.currentTarget.style.transform='translateY(-2px)';}}
+          onMouseOut={e=>{e.currentTarget.style.transform='';}}>Entrar no painel</button>
+      </div>
+    </div>
+  );
+}
+
+function PatientApp({patient,upd,onLogout,flash}){
+  const [tab,setTab]=useState('home');
+  const [ci,setCi]=useState(false);
+  const todayDone=()=>{const t=new Date().toISOString().split('T')[0];return (patient.checkins||[]).some(c=>c.date===t);};
+  const openCi=()=>{if(todayDone()){flash('Check-in de hoje já realizado ✦');return;}setCi(true);};
+  return (
+    <div className="shell">
+      <div className="shell-body">
+        {tab==='home'&&<HomeTab patient={patient} upd={upd} onCheckin={openCi} flash={flash}/>}
+        {tab==='plano'&&<PlanoTab patient={patient} upd={upd} flash={flash}/>}
+        {tab==='perfil'&&<PerfilTab patient={patient} upd={upd} onLogout={onLogout} flash={flash}/>}
+      </div>
+      <nav className="tab-bar">
+        {[{id:'home',ic:'⌂',lb:'Início'},{id:'plano',ic:'◈',lb:'Plano'},{id:'perfil',ic:'◯',lb:'Perfil'}].map(t=>(
+          <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>
+            <span className="tab-icon" style={{fontFamily:'Georgia,serif'}}>{t.ic}</span>
+            <span className="tab-label">{t.lb}</span>
+            <div className="tab-dot"/>
+          </button>
+        ))}
+      </nav>
+      {ci&&<CheckinModal patient={patient} upd={upd} onClose={()=>setCi(false)} flash={flash}/>}
+    </div>
+  );
+}
+
+function HomeTab({patient,upd,onCheckin,flash}){
+  const h=new Date().getHours();
+  const greet=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+  const today=new Date();
+  const todayStr=today.toISOString().split('T')[0];
+  const dow=today.getDay();
+  const week=Array.from({length:7},(_,i)=>{const d=new Date(today);d.setDate(today.getDate()-dow+i);return d;});
+  const doneSet=new Set((patient.checkins||[]).map(c=>c.date));
+  const wkCnt=week.filter(d=>doneSet.has(d.toISOString().split('T')[0])).length;
+  const phase=PHASES.find(p=>p.id===patient.currentPhase)||PHASES[0];
+  const nextPhase=PHASES.find(p=>p.id===patient.currentPhase+1);
+  const totalCI=(patient.checkins||[]).length;
+  const prevPhaseDays=PHASES.filter(p=>p.id<patient.currentPhase).reduce((a,p)=>a+p.days,0);
+  const phaseCI=Math.max(0,totalCI-prevPhaseDays);
+  const phasePct=Math.min(Math.round((phaseCI/phase.days)*100),100);
+  const daysLeft=Math.max(0,phase.days-phaseCI);
+
+  // Phase-filtered content
+  // exercises: 3 per phase
+  const exercises=getPhaseContent(ALL_EXERCISES, patient.currentPhase, [3,3,3,3]);
+  // meditations: 3 for phase1, +2 each new phase
+  const meditations=getPhaseContent(ALL_MEDITATIONS, patient.currentPhase, [3,2,2,2]);
+  // recipes: 3 per phase
+  const recipes=getPhaseContent(ALL_RECIPES, patient.currentPhase, [3,3,3,3]);
+
+  const weekMsg=()=>{
+    if(wkCnt===0) return 'Comece hoje — cada check-in é um passo na sua jornada ✦';
+    if(wkCnt===7) return 'Semana perfeita! Você completou todos os 7 dias 🎉';
+    if(wkCnt>=5) return `Incrível disciplina! Você fez ${wkCnt}/7 check-ins essa semana ✦`;
+    if(wkCnt>=3) return `Parabéns pela disciplina! Você fez ${wkCnt}/7 check-ins essa semana ✦`;
+    return `Você fez ${wkCnt}/7 check-ins essa semana — continue firme!`;
+  };
+
+  const todayCI=(patient.checkins||[]).find(c=>c.date===todayStr);
+  const [doneExs,setDoneExs]=useState([]);
+  const [doneMeds,setDoneMeds]=useState([]);
+  const [selectedRecipe,setSelectedRecipe]=useState(null);
+  const [confirmAct,setConfirmAct]=useState(null);
+
+  // ── WATER TRACKER ──
+  const waterKey=`vita_water_${patient.id}_${todayStr}`;
+  const [waterCups,setWaterCups]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(waterKey)||'0');}catch{return 0;}
+  });
+  const MAX_WATER=12;
+  const addWater=()=>{
+    if(waterCups>=MAX_WATER)return;
+    const n=waterCups+1;
+    setWaterCups(n);
+    localStorage.setItem(waterKey,JSON.stringify(n));
+    if(n===8)flash('🎉 Meta diária atingida! 8 copos de água!');
+    else flash(`💧 +1 copo · ${n} de ${MAX_WATER} hoje`);
+  };
+  const removeWater=()=>{
+    if(waterCups<=0)return;
+    const n=waterCups-1;
+    setWaterCups(n);
+    localStorage.setItem(waterKey,JSON.stringify(n));
+  };
+  const waterMsg=()=>{
+    if(waterCups===0)return 'Beba seu primeiro copo agora 💧';
+    if(waterCups<4)return `Continue! Faltam ${8-waterCups} copos para a meta`;
+    if(waterCups<8)return `Boa! Faltam ${8-waterCups} copos para a meta de 8`;
+    if(waterCups===8)return '🎉 Meta diária atingida!';
+    return `Excelente! ${waterCups} copos hoje ✦`;
+  };
+
+  // ── SYMPTOM POPUP ──
+  const symKey=`vita_syms_${patient.id}_${todayStr}`;
+  const [todaySyms,setTodaySyms]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(symKey)||'[]');}catch{return [];}
+  });
+  const [showSymPopup,setShowSymPopup]=useState(false);
+  const [popupSelected,setPopupSelected]=useState([]);
+  // Show popup after 15s if not already seen today
+  const seenKey=`vita_sympopup_${patient.id}_${todayStr}`;
+  React.useEffect(()=>{
+    if(localStorage.getItem(seenKey))return;
+    const t=setTimeout(()=>setShowSymPopup(true),15000);
+    return ()=>clearTimeout(t);
+  },[]);
+
+  const openSymPopup=()=>{setPopupSelected([...todaySyms]);setShowSymPopup(true);};
+  const togPopupSym=s=>setPopupSelected(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s]);
+  const saveSyms=()=>{
+    setTodaySyms(popupSelected);
+    localStorage.setItem(symKey,JSON.stringify(popupSelected));
+    localStorage.setItem(seenKey,'1');
+    setShowSymPopup(false);
+    flash(popupSelected.length>0?`${popupSelected.length} sintoma${popupSelected.length>1?'s':''} registrado${popupSelected.length>1?'s':''}  ✦`:'Sem sintomas registrados ✦');
+  };
+  const removeActiveSym=s=>{
+    const n=todaySyms.filter(x=>x!==s);
+    setTodaySyms(n);
+    localStorage.setItem(symKey,JSON.stringify(n));
+  };
+
+  const handleExClick=i=>{
+    if(doneExs.includes(i)){setDoneExs(p=>p.filter(x=>x!==i));return;}
+    setConfirmAct({type:'ex',index:i,name:exercises[i].name,duration:exercises[i].duration,icon:exercises[i].icon});
+  };
+  const handleMedClick=i=>{
+    if(doneMeds.includes(i)){setDoneMeds(p=>p.filter(x=>x!==i));return;}
+    setConfirmAct({type:'med',index:i,name:meditations[i].name,duration:meditations[i].duration});
+  };
+  const confirmDo=()=>{
+    if(!confirmAct)return;
+    if(confirmAct.type==='ex'){
+      setDoneExs(p=>[...p,confirmAct.index]);
+      flash('Exercício marcado! 💪');
+      upd({stats:{...(patient.stats||{}),exercises:(patient.stats?.exercises||0)+1}});
+    } else {
+      setDoneMeds(p=>[...p,confirmAct.index]);
+      flash('Meditação marcada! 🌿');
+      upd({stats:{...(patient.stats||{}),meditations:(patient.stats?.meditations||0)+1}});
+    }
+    setConfirmAct(null);
+  };
+
+  return (
+    <div>
+      {/* HEADER */}
+      <div className="home-hero a1">
+        <div className="hero-top">
+          <div>
+            <div className="hero-gr">{greet}</div>
+            <div className="hero-nm">{patient.name.split(' ')[0]}<em>!</em></div>
+          </div>
+          <div className="hero-av">{patient.name[0]}</div>
+        </div>
+        <div className="cta-ci a2" onClick={onCheckin}>
+          <div className="cta-ci-ic" style={{fontFamily:'Georgia,serif',color:'rgba(255,255,255,.9)'}}>✦</div>
+          <div className="cta-ci-txt">
+            <div className="cta-ci-title">Check-in do dia</div>
+            <div className="cta-ci-sub">Registre como você está se sentindo</div>
+          </div>
+          <span className="cta-ci-arr">›</span>
+        </div>
+      </div>
+
+      {/* WATER TRACKER */}
+      <div className="water-bar a2">
+        <div className="water-bar-top">
+          <div className="water-bar-title">Água de <em>hoje</em></div>
+          <div className="water-count-wrap">
+            <span className="water-count">{waterCups}</span>
+            <span className="water-count-of">/{MAX_WATER} copos</span>
+          </div>
+        </div>
+        <div className="water-cups">
+          {Array.from({length:MAX_WATER},(_,i)=>(
+            <div key={i} className={`water-cup${i<waterCups?' filled':''}`}
+              onClick={i<waterCups?removeWater:addWater}
+              title={i<waterCups?'Clique para remover':'Clique para adicionar'}>
+              💧
+            </div>
+          ))}
+        </div>
+        <button className="water-cta" onClick={addWater} disabled={waterCups>=MAX_WATER}
+          style={{opacity:waterCups>=MAX_WATER?.6:1}}>
+          <span style={{fontSize:20}}>+</span> Bebi um copo agora
+        </button>
+        <div className="water-msg">{waterMsg()}</div>
+      </div>
+
+      {/* SYMPTOM STRIP */}
+      {todaySyms.length>0&&(
+        <div style={{padding:'0 24px',marginBottom:16}} className="a2">
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+            <span style={{fontSize:12,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--muted)'}}>Sintomas de hoje</span>
+            <button onClick={openSymPopup} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:'var(--terra)',fontFamily:'Jost,sans-serif'}}>Editar ›</button>
+          </div>
+          <div className="sym-active-strip">
+            {todaySyms.map(s=>(
+              <div key={s} className="sym-active-chip" onClick={()=>removeActiveSym(s)}>
+                {s}<span className="x-ic">×</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {todaySyms.length===0&&(
+        <div style={{padding:'0 24px',marginBottom:16}} className="a2">
+          <button onClick={openSymPopup} style={{
+            background:'none',border:'1.5px dashed var(--border)',borderRadius:12,
+            padding:'10px 16px',width:'100%',cursor:'pointer',
+            fontFamily:'Jost,sans-serif',fontSize:13,color:'var(--muted)',
+            display:'flex',alignItems:'center',gap:8,transition:'all .2s'
+          }}>
+            <span>◇</span> Registrar sintomas de hoje
+          </button>
+        </div>
+      )}
+      <div className="sec-pad a2"><div className="sec-hd"><span className="sec-title">Sua Jornada</span></div></div>
+      <div className="j-rail a2">
+        {PHASES.map(ph=>{
+          const isAct=ph.id===patient.currentPhase;
+          const isDone=ph.id<patient.currentPhase;
+          return (
+            <div key={ph.id} className={`ph-tile${isAct?' active':isDone?' done':' locked'}`}>
+              {isAct&&<span className="ph-badge">Você está aqui</span>}
+              {isDone&&<span className="ph-badge done-b">✓ Concluída</span>}
+              <div className="ph-orb" style={{fontFamily:'Georgia,serif',fontSize:20}}>{ph.icon}</div>
+              <div className="ph-nm">{ph.name}</div>
+              <div className="ph-mo">{ph.months}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Progress */}
+      <div className="j-progress-card a2" style={{marginTop:14}}>
+        <div className="j-prog-top">
+          <span className="j-prog-where">Fase atual</span>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--terra)'}}>{phasePct}%</span>
+        </div>
+        <div className="j-prog-phase"><em>{phase.name}</em> — {phase.months}</div>
+        <div className="j-prog-next">
+          {daysLeft>0
+            ? <>Faltam <strong>{daysLeft} dias de check-in</strong> para avançar{nextPhase?` para ${nextPhase.name}`:''}</>
+            : <>Pronta para avançar para a próxima fase! ✦</>}
+        </div>
+        <div className="j-prog-bar-wrap"><div className="j-prog-bar" style={{width:`${phasePct}%`}}/></div>
+        <div className="j-prog-labels">
+          <span className="j-prog-days-done">{phaseCI} dias concluídos</span>
+          <span>{phase.days} dias totais</span>
+        </div>
+      </div>
+
+      {/* ESTA SEMANA */}
+      <div className="sec-pad a3"><div className="sec-hd" style={{marginTop:20}}><span className="sec-title">Esta Semana</span></div></div>
+      <div className="week-card a3">
+        <div className="week-row">
+          {week.map((d,i)=>{
+            const ds=d.toISOString().split('T')[0];
+            const isT=ds===todayStr;
+            const isDn=doneSet.has(ds);
+            return (
+              <div key={i} className={`day-pip${isT?' today':''}${isDn&&!isT?' chkd':''}`}>
+                <span style={{fontSize:9,fontWeight:600,letterSpacing:'.06em'}}>{WDAYS[i]}</span>
+                <span>{d.getDate()}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="week-ft" style={{marginTop:12}}>
+          <span className="week-cnt">{wkCnt}<span style={{fontSize:13,color:'var(--muted)',fontFamily:'Jost',fontWeight:400}}>/7</span></span>
+          <span style={{fontSize:12,color:'var(--muted)'}}>check-ins</span>
+        </div>
+        <div className="week-msg">{weekMsg()}</div>
+      </div>
+
+      {/* EXERCÍCIOS */}
+      <div className="act-card a3" style={{marginTop:20}}>
+        <div className="act-card-head">
+          <div className="act-card-icon ex">🏃‍♀️</div>
+          <div className="act-card-q">Hoje vamos <em>praticar</em> qual exercício?</div>
+        </div>
+        <div className="act-card-items">
+          {exercises.map((ex,i)=>(
+            <div key={i} className={`act-item${doneExs.includes(i)?' done-item':''}`} onClick={()=>handleExClick(i)}>
+              <div className="act-item-ic">{ex.icon}</div>
+              <div className="act-item-info">
+                <div className="act-item-name">{ex.name}</div>
+                <div className="act-item-dur">◷ {ex.duration}{doneExs.includes(i)?' · toque para desmarcar':''}</div>
+              </div>
+              <div className="act-item-check">{doneExs.includes(i)?'✓':''}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* MEDITAÇÕES */}
+      <div className="act-card a3">
+        <div className="act-card-head">
+          <div className="act-card-icon med" style={{fontFamily:'Georgia,serif',fontSize:16,color:'var(--sage)',display:'flex',alignItems:'center',justifyContent:'center'}}>◇</div>
+          <div className="act-card-q">Já fez a sua <em>meditação</em>?</div>
+        </div>
+        <div className="act-card-items">
+          {meditations.map((m,i)=>(
+            <div key={i} className={`act-item${doneMeds.includes(i)?' done-item':''}`} onClick={()=>handleMedClick(i)}>
+              <div className="act-item-ic" style={{fontFamily:'Georgia,serif',fontSize:16,color:'var(--sage)',background:'rgba(107,140,110,.1)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center'}}>◇</div>
+              <div className="act-item-info">
+                <div className="act-item-name">{m.name}</div>
+                <div className="act-item-dur">◷ {m.duration}{doneMeds.includes(i)?' · toque para desmarcar':''}</div>
+              </div>
+              <div className="act-item-check">{doneMeds.includes(i)?'✓':''}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ALIMENTAÇÃO */}
+      <div className="act-card a4">
+        <div className="act-card-head">
+          <div className="act-card-icon food">🥗</div>
+          <div className="act-card-q">Sua <em>alimentação</em> de hoje</div>
+        </div>
+        <div className="act-card-items">
+          {recipes.map((r,i)=>(
+            <div key={i} className="act-item" onClick={()=>setSelectedRecipe(r)}>
+              <div className="act-item-ic">{r.icon}</div>
+              <div className="act-item-info">
+                <div className="act-item-name">{r.name}</div>
+                <div className="act-item-dur">◷ {r.duration} preparo · toque para ver a receita</div>
+              </div>
+              <span style={{color:'var(--muted)',fontSize:16}}>›</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* EXAMES */}
+      {(patient.exams||[]).length>0&&(
+        <div className="act-card a4">
+          <div className="act-card-head">
+            <div className="act-card-icon exam" style={{fontFamily:'Georgia,serif',fontSize:15,color:'#7a9dc4',display:'flex',alignItems:'center',justifyContent:'center'}}>◈</div>
+            <div className="act-card-q">Exames a fazer <em>nesta etapa</em></div>
+          </div>
+          <div style={{padding:'0 12px 14px',display:'flex',flexDirection:'column',gap:8}}>
+            {(patient.exams||[]).map((ex,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 14px',background:'var(--bg)',borderRadius:12}}>
+                <div style={{width:34,height:34,borderRadius:10,background:'rgba(100,140,200,.1)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Georgia,serif',fontSize:13,color:'#7a9dc4',flexShrink:0}}>◈</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:500,color:'var(--ink)'}}>{ex.name}</div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{ex.month}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{height:16}}/>
+
+      {/* SYMPTOM POPUP */}
+      {showSymPopup&&(
+        <div className="sym-popup-overlay" onClick={e=>{if(e.target.className==='sym-popup-overlay')saveSyms();}}>
+          <div className="sym-popup">
+            <div className="sym-popup-handle"/>
+            <div className="sym-popup-title">Como estão os <em>sintomas</em> hoje?</div>
+            <div className="sym-popup-sub">
+              Selecione o que está sentindo agora. Você pode atualizar isso ao longo do dia — os registros ficam salvos até meia-noite.
+            </div>
+            {popupSelected.length>0&&(
+              <div className="sym-active-strip">
+                {popupSelected.map(s=>(
+                  <div key={s} className="sym-active-chip" onClick={()=>togPopupSym(s)}>
+                    {s}<span className="x-ic">×</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="sym-popup-grid">
+              {SYMPTOMS.map(s=>(
+                <button key={s} className={`sym-ptag${popupSelected.includes(s)?' on':''}`} onClick={()=>togPopupSym(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <button className="btn-reg" onClick={saveSyms}>
+              {popupSelected.length>0
+                ?`Salvar ${popupSelected.length} sintoma${popupSelected.length>1?'s':''} ✦`
+                :'Estou bem, sem sintomas ✦'}
+            </button>
+            <button className="btn-cancel" onClick={()=>{localStorage.setItem(seenKey,'1');setShowSymPopup(false);}}>
+              Agora não
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmAct&&(
+        <div className="overlay" onClick={e=>e.target.className==='overlay'&&setConfirmAct(null)}>
+          <div className="sheet" style={{maxHeight:'auto',padding:'24px 24px 32px'}}>
+            <div className="sh-handle"/>
+            <div style={{textAlign:'center',marginBottom:20}}>
+              <div style={{fontSize:36,marginBottom:10}}>{confirmAct.icon||'◇'}</div>
+              <div style={{fontFamily:'Libre Baskerville,serif',fontSize:18,fontWeight:400,marginBottom:6}}>
+                {confirmAct.type==='ex'?'Confirmar exercício':'Confirmar meditação'}
+              </div>
+              <div style={{fontSize:14,color:'var(--ink2)',fontWeight:500,marginBottom:4}}>{confirmAct.name}</div>
+              <div style={{fontSize:12,color:'var(--muted)'}}>◷ {confirmAct.duration}</div>
+            </div>
+            <div style={{background:'var(--bg2)',borderRadius:14,padding:'14px 16px',fontSize:13,color:'var(--ink3)',textAlign:'center',marginBottom:20,lineHeight:1.6}}>
+              {confirmAct.type==='ex'
+                ?'Você realizou este exercício hoje?'
+                :'Você realizou esta meditação hoje?'}
+            </div>
+            <button className="btn-reg" onClick={confirmDo}>
+              ✓ Sim, {confirmAct.type==='ex'?'fiz o exercício':'fiz a meditação'}
+            </button>
+            <button className="btn-cancel" onClick={()=>setConfirmAct(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* RECIPE MODAL */}
+      {selectedRecipe&&(
+        <div className="overlay" onClick={e=>e.target.className==='overlay'&&setSelectedRecipe(null)}>
+          <div className="recipe-sheet">
+            <div className="sh-handle"/>
+            <div className="recipe-img">{selectedRecipe.icon}</div>
+            <div className="recipe-title"><em>{selectedRecipe.name}</em></div>
+            <div className="recipe-meta">
+              <span className="recipe-tag">◷ {selectedRecipe.duration} preparo</span>
+              <span className="recipe-tag">🌿 {PHASES.find(p=>p.id===selectedRecipe.phase)?.name}</span>
+            </div>
+            <div className="recipe-section">Ingredientes</div>
+            <div className="recipe-ing">
+              {(selectedRecipe.ingredients||[]).map((ing,i)=>(
+                <div key={i} className="recipe-ing-item">
+                  <span style={{color:'var(--terra)',fontFamily:'Georgia,serif'}}>✦</span>
+                  <span>{ing}</span>
+                </div>
+              ))}
+            </div>
+            <div className="recipe-section">Modo de Preparo</div>
+            <div className="recipe-steps">
+              {(selectedRecipe.steps||[]).map((step,i)=>(
+                <div key={i} className="recipe-step">
+                  <div className="recipe-step-num">{i+1}</div>
+                  <div className="recipe-step-txt">{step}</div>
+                </div>
+              ))}
+            </div>
+            <button className="btn-cancel" style={{marginTop:24}} onClick={()=>setSelectedRecipe(null)}>Fechar receita</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckinModal({patient,upd,onClose,flash}){
+  const [mood,setMood]=useState('');
+  const [energy,setEnergy]=useState(0);
+  const [sleep,setSleep]=useState(0);
+  const [water,setWater]=useState(6);
+  const [syms,setSyms]=useState([]);
+  const [exD,setExD]=useState(false);
+  const [medD,setMedD]=useState(false);
+  const [notes,setNotes]=useState('');
+  const togSym=s=>setSyms(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s]);
+  const submit=async()=>{
+    const today=new Date().toISOString().split('T')[0];
+    const ci={date:today,mood,energy,sleep,water,symptoms:syms,exerciseDone:exD,meditationDone:medD,notes};
+    const checkins=[...(patient.checkins||[]),ci];
+    const stats={...(patient.stats||{}),checkins:(patient.stats?.checkins||0)+1,exercises:(patient.stats?.exercises||0)+(exD?1:0),meditations:(patient.stats?.meditations||0)+(medD?1:0)};
+    const ph=PHASES.find(p=>p.id===patient.currentPhase)||PHASES[0];
+    let cp=patient.currentPhase;
+    let ul=[...(patient.unlockedPhases||[1])];
+    if(checkins.length>=ph.days&&cp<4){cp++;if(!ul.includes(cp))ul.push(cp);flash(`✦ Fase ${cp} desbloqueada!`);}
+    await upd({checkins,stats,currentPhase:cp,unlockedPhases:ul});
+    flash('Dia registrado com sucesso ✦');
+    onClose();
+  };
+  return (
+    <div className="overlay" onClick={e=>e.target.className==='overlay'&&onClose()}>
+      <div className="sheet">
+        <div className="sh-handle"/>
+        <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
+          <div style={{width:44,height:44,background:'rgba(181,103,58,.1)',borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--terra)',fontFamily:'Georgia,serif',fontSize:20}}>✦</div>
+          <div><div className="sh-title" style={{marginBottom:2}}>Check-in do Dia</div><div className="sh-sub" style={{marginBottom:0}}>Como você está se sentindo hoje?</div></div>
+        </div>
+        <span className="f-lbl">Humor</span>
+        <div className="mood-strip">
+          {MOODS.map(m=>(
+            <button key={m.l} className={`mood-btn${mood===m.l?' sel':''}`} onClick={()=>setMood(m.l)}>
+              <span className="mood-em">{m.e}</span>
+              <span className="mood-lb">{m.l}</span>
+            </button>
+          ))}
+        </div>
+        <div className="scale-grid">
+          <div>
+            <div className="scale-ttl">☀ Energia</div>
+            <div className="sq-row">{[1,2,3,4,5].map(n=><div key={n} className={`sq e${n<=energy?' on':''}`} onClick={()=>setEnergy(n)}/>)}</div>
+          </div>
+          <div>
+            <div className="scale-ttl">◑ Sono</div>
+            <div className="sq-row">{[1,2,3,4,5].map(n=><div key={n} className={`sq s${n<=sleep?' on':''}`} onClick={()=>setSleep(n)}/>)}</div>
+          </div>
+        </div>
+        <div className="sl-block">
+          <div className="sl-lbl">◈ Água (copos) <span className="sl-val">{water} copos</span></div>
+          <input type="range" min={0} max={12} value={water} onChange={e=>setWater(+e.target.value)}/>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--muted)',marginTop:4}}><span>0</span><span>12</span></div>
+        </div>
+        <span className="f-lbl">Sintomas de hoje</span>
+        <div className="tag-cloud">
+          {SYMPTOMS.map(s=><button key={s} className={`sym-tag${syms.includes(s)?' on':''}`} onClick={()=>togSym(s)}>{s}</button>)}
+        </div>
+        <div className="tog-row">
+          <button className={`tog-btn${exD?' on':''}`} onClick={()=>setExD(!exD)}>◷ Exercício feito</button>
+          <button className={`tog-btn${medD?' on':''}`} onClick={()=>setMedD(!medD)}>◇ Meditação feita</button>
+        </div>
+        <span className="f-lbl" style={{marginBottom:8}}>Anotações</span>
+        <textarea className="fi" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Como foi seu dia? Alguma observação especial..."/>
+        <button className="btn-reg" onClick={submit}>Registrar dia</button>
+        <button className="btn-cancel" onClick={onClose}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function PlanoTab({patient,upd,flash}){
+  const togR=id=>upd({reminders:(patient.reminders||[]).map(r=>r.id===id?{...r,done:!r.done}:r)});
+  const delR=id=>{upd({reminders:(patient.reminders||[]).filter(r=>r.id!==id)});flash('Lembrete removido');};
+  return (
+    <div>
+      <div className="plano-hero a1">
+        <h1 className="plano-t">Plano de <em>Bem-Estar</em></h1>
+        <p className="plano-s">Recomendações personalizadas para você</p>
+      </div>
+      <div className="coming-card a2">
+        <div className="coming-ic" style={{fontFamily:'Georgia,serif',color:'rgba(255,255,255,.6)',fontSize:20}}>✦</div>
+        <div><div className="coming-title">Gerar Plano de Hoje com IA</div><div className="coming-sub">Em breve — baseado na sua fase e sintomas</div></div>
+      </div>
+      <div className="sec-pad a2"><div className="sec-hd"><span className="sec-title">Lembretes de Hoje</span></div></div>
+      {(patient.reminders||[]).map(r=>(
+        <div key={r.id} className="rem-card a3" style={{opacity:r.done?.85:1}}>
+          <div className="rem-ico" style={{fontFamily:'Georgia,serif'}}>◈</div>
+          <div className="rem-body">
+            <div className="rem-nm" style={{textDecoration:r.done?'line-through':''}}>{r.title}</div>
+            <div className="rem-desc">{r.desc}</div>
+            <div className="rem-time">◷ {r.time}</div>
+          </div>
+          <div className="rem-acts">
+            <button className="r-btn" style={{color:r.done?'var(--muted)':'var(--sage)'}} onClick={()=>togR(r.id)}>{r.done?'↩':'✓'}</button>
+            <button className="r-btn" style={{color:'var(--muted)'}} onClick={()=>delR(r.id)}>✕</button>
+          </div>
+        </div>
+      ))}
+      <div className="sec-pad a3"><div className="sec-hd"><span className="sec-title">Suplementação</span></div></div>
+      {(patient.supplements||[]).map((s,i)=>(
+        <div key={i} className="suppl-row a3">
+          <span style={{fontSize:16,color:'var(--terra)',fontFamily:'Georgia,serif'}}>◈</span>
+          <span className="suppl-nm">{s.name}</span>
+          <span className="suppl-ds">{s.dose}</span>
+        </div>
+      ))}
+      <div className="sec-pad a4"><div className="sec-hd"><span className="sec-title">Plano Alimentar</span></div></div>
+      <div className="food-panel a4">
+        <div className="food-ph can">✓ Pode comer</div>
+        <div className="food-pb">{(patient.canEat||[]).map((f,i)=><span key={i} className="food-pill can">{f}</span>)}</div>
+      </div>
+      <div className="food-panel a4">
+        <div className="food-ph cant">✕ Evitar</div>
+        <div className="food-pb">{(patient.cantEat||[]).map((f,i)=><span key={i} className="food-pill cant">{f}</span>)}</div>
+      </div>
+      <div style={{height:16}}/>
+    </div>
+  );
+}
+
+function PerfilTab({patient,upd,onLogout,flash}){
+  const [dob,setDob]=useState(patient.dob||'');
+  const [hp,setHp]=useState(patient.hormonalPhase||'');
+  const [syms,setSyms]=useState(patient.symptoms||[]);
+  const [objs,setObjs]=useState(patient.objectives||[]);
+  const s=patient.stats||{exercises:0,meditations:0,recipes:0,checkins:0};
+  const save=()=>{upd({dob,hormonalPhase:hp,symptoms:syms,objectives:objs});flash('Perfil salvo ✦');};
+  return (
+    <div>
+      <div className="perf-hero a1">
+        <div className="perf-av">{patient.name[0]}</div>
+        <div><div className="perf-nm">{patient.name}</div><div className="perf-em">{patient.email}</div></div>
+      </div>
+      <div className="stats-strip a2">
+        {[{v:s.exercises,l:'Exercícios',c:'ex'},{v:s.meditations,l:'Meditações',c:'med'},{v:s.recipes,l:'Receitas',c:'rec'},{v:s.checkins,l:'Check-ins',c:'chk'}].map(st=>(
+          <div key={st.l} className="stat-tile">
+            <div className={`stat-v ${st.c}`}>{st.v}</div>
+            <div className="stat-l">{st.l}</div>
+          </div>
+        ))}
+      </div>
+      <div className="perf-body a3">
+        <div className="perf-sec">Complete seu perfil</div>
+        <div className="fl"><label>Data de Nascimento</label><input className="fi" type="date" value={dob} onChange={e=>setDob(e.target.value)}/></div>
+        <div className="fl">
+          <label>Fase Hormonal Atual</label>
+          <select className="fs" value={hp} onChange={e=>setHp(e.target.value)}>
+            <option value="">Selecione...</option>
+            {HORMONAL.map(h=><option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
+        <div className="perf-sec">Sintomas que você sente</div>
+        <div className="tag-cloud">
+          {SYMPTOMS.map(s=><button key={s} className={`tag-opt${syms.includes(s)?' on':''}`} onClick={()=>setSyms(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s])}>{s}</button>)}
+        </div>
+        <div className="perf-sec">Seus objetivos</div>
+        <div className="tag-cloud">
+          {OBJECTIVES.map(o=><button key={o} className={`tag-opt${objs.includes(o)?' on':''}`} onClick={()=>setObjs(p=>p.includes(o)?p.filter(x=>x!==o):[...p,o])}>{o}</button>)}
+        </div>
+        <button className="btn-t" style={{marginTop:24}} onClick={save}>Salvar perfil</button>
+        <button className="logout-lnk" onClick={onLogout}>↪ Sair da conta</button>
+      </div>
+    </div>
+  );
+}
+
+function Admin({patients,setP,onLogout,flash}){
+  const [sec,setSec]=useState('dashboard');
+  const [modal,setModal]=useState(null);
+  const [detailP,setDetailP]=useState(null);
+  const [advConfirm,setAdvConfirm]=useState(null);
+
+  const updP=(id,d)=>setP(patients.map(p=>p.id===id?{...p,...d}:p));
+
+  const saveNewPatient=async(data)=>{
+    const newP={...data,id:'p'+Date.now()};
+    // Atualiza local imediatamente para a UI não travar
+    setP([...patients, newP]);
+    setModal(null);
+    flash('Paciente criada ✦');
+    // Salva no Firebase — onSnapshot propaga para TODOS os dispositivos automaticamente
+    try {
+      await fbSavePatient(newP);
+    } catch(e) {
+      console.error('Erro ao salvar no Firebase:', e);
+      flash('⚠ Salvo localmente — verifique a conexão');
+    }
+  };
+
+  const saveEditPatient=async(id,data)=>{
+    const updated={...patients.find(p=>p.id===id),...data};
+    setP(patients.map(p=>p.id===id?updated:p));
+    setModal(null);
+    flash('Paciente atualizada ✦');
+    try {
+      await fbSavePatient(updated);
+    } catch(e) {
+      console.error('Erro ao atualizar no Firebase:', e);
+      flash('⚠ Salvo localmente — verifique a conexão');
+    }
+  };
+
+  const delP=async(id)=>{
+    if(!confirm('Remover esta paciente permanentemente?'))return;
+    setP(patients.filter(p=>p.id!==id));
+    flash('Paciente removida');
+    try {
+      await fbDeletePatient(id);
+    } catch(e) {
+      console.error('Erro ao deletar no Firebase:', e);
+    }
+  };
+
+  const doAdvance=id=>{
+    const p=patients.find(x=>x.id===id);
+    if(!p||p.currentPhase>=4){flash('Já está na fase máxima');return;}
+    const np=p.currentPhase+1;
+    const ul=[...(p.unlockedPhases||[1])];
+    if(!ul.includes(np))ul.push(np);
+    updP(id,{currentPhase:np,unlockedPhases:ul});
+    flash(`✦ Fase ${np} liberada para ${p.name.split(' ')[0]}!`);
+    setAdvConfirm(null);
+  };
+
+  // alerts: patients 3+ days without checkin
+  const alerts=patients.filter(p=>{
+    const checkins=p.checkins||[];
+    if(!checkins.length)return true;
+    const last=new Date(checkins[checkins.length-1].date);
+    const diff=(new Date()-last)/(1000*60*60*24);
+    return diff>=3;
+  });
+
+  const navItems=[
+    {id:'dashboard',ic:'◈',lb:'Dashboard'},
+    {id:'patients',ic:'◯',lb:'Pacientes'},
+    {id:'alerts',ic:'◇',lb:`Alertas${alerts.length?` (${alerts.length})`:''}`,},
+  ];
+
+  return (
+    <div className="adm-wrap">
+      <div className="adm-side">
+        <div className="adm-brand">
+          <div style={{fontSize:22,marginBottom:8}}>🌿</div>
+          <div className="adm-brand-nm">Bio Vitalie</div>
+          <div className="adm-brand-sb">Painel Administrativo</div>
+        </div>
+        {navItems.map(n=>(
+          <button key={n.id} className={`adm-nb${sec===n.id?' on':''}`} onClick={()=>setSec(n.id)}>
+            <span style={{fontFamily:'Georgia,serif',marginRight:8}}>{n.ic}</span>{n.lb}
+          </button>
+        ))}
+        <div className="adm-side-foot">
+          <button className="btn btn-sec btn-sm" style={{width:'100%'}} onClick={onLogout}>Sair</button>
+        </div>
+      </div>
+
+      <div className="adm-main">
+        {sec==='dashboard' && <ADash patients={patients} onViewDetail={setDetailP} onAlert={()=>setSec('alerts')}/>}
+        {sec==='patients' && <APatients patients={patients} onNew={()=>setModal('new')} onEdit={p=>setModal(p)} onDel={delP} onAdvance={id=>setAdvConfirm(id)} onViewDetail={setDetailP}/>}
+        {sec==='alerts'   && <AAlerts patients={alerts} onViewDetail={setDetailP} onDismiss={()=>flash('Alerta dispensado')}/>}
+      </div>
+
+      {/* patient modal */}
+      {modal && (
+        <PatientModal
+          patient={modal==='new'?null:modal}
+          onClose={()=>setModal(null)}
+          onSave={d=>{
+            if(modal==='new') saveNewPatient(d);
+            else saveEditPatient(modal.id,d);
+            setModal(null);
+          }}
+        />
+      )}
+
+      {/* detail view */}
+      {detailP && (
+        <PatientDetail
+          patient={patients.find(p=>p.id===detailP)}
+          onClose={()=>setDetailP(null)}
+          onEdit={p=>{setDetailP(null);setModal(p);}}
+          onAdvance={id=>setAdvConfirm(id)}
+        />
+      )}
+
+      {/* advance phase confirm */}
+      {advConfirm && (()=>{
+        const p=patients.find(x=>x.id===advConfirm);
+        const cur=PHASES.find(x=>x.id===p.currentPhase)||PHASES[0];
+        const nxt=PHASES.find(x=>x.id===p.currentPhase+1);
+        return (
+          <div className="modal-bg">
+            <div className="modal-box" style={{maxWidth:440}}>
+              <div className="modal-hd">
+                <h2 className="modal-ttl">Avançar fase</h2>
+                <button className="modal-cls" onClick={()=>setAdvConfirm(null)}>✕</button>
+              </div>
+              <div className="phase-confirm">
+                <div className="phase-confirm-title">Confirmar progressão de {p.name.split(' ')[0]}?</div>
+                <div className="phase-confirm-txt">
+                  Você está avançando manualmente de <strong>{cur.name}</strong> para <strong>{nxt?.name||'fase final'}</strong>.<br/>
+                  Isso normalmente acontece de forma automática ao completar {cur.days} check-ins.<br/>
+                  <span style={{color:'var(--muted)'}}>Check-ins realizados: {p.checkins?.length||0}/{cur.days}</span>
+                </div>
+                <div className="phase-confirm-btns">
+                  <button className="btn btn-sec" onClick={()=>setAdvConfirm(null)}>Cancelar</button>
+                  <button className="btn btn-pri" onClick={()=>doAdvance(advConfirm)}>Confirmar avanço ✦</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ── DASHBOARD ──
+function ADash({patients,onViewDetail,onAlert}){
+  const totalCI=patients.reduce((a,p)=>a+(p.checkins?.length||0),0);
+  const todayStr=new Date().toISOString().split('T')[0];
+  const activeToday=patients.filter(p=>(p.checkins||[]).some(c=>c.date===todayStr)).length;
+  const alerts=patients.filter(p=>{
+    const ci=p.checkins||[];
+    if(!ci.length)return true;
+    const diff=(new Date()-new Date(ci[ci.length-1].date))/(1000*60*60*24);
+    return diff>=3;
+  });
+
+  // weekly adherence last 4 weeks
+  const weeklyData=Array.from({length:4},(_,w)=>{
+    const start=new Date();start.setDate(start.getDate()-((3-w)*7)-start.getDay());
+    let count=0;
+    patients.forEach(p=>(p.checkins||[]).forEach(c=>{
+      const d=new Date(c.date);
+      if(d>=start&&d<new Date(start.getTime()+7*24*3600*1000))count++;
+    }));
+    return {week:`S-${4-w}`,count};
+  });
+  const maxW=Math.max(...weeklyData.map(x=>x.count),1);
+
+  return (
+    <div className="a1">
+      <div className="adm-ph">
+        <div><h1 className="adm-pt">Dashboard</h1><p className="adm-ps">{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</p></div>
+      </div>
+
+      {alerts.length>0&&(
+        <div className="alert-banner" style={{marginBottom:20,cursor:'pointer'}} onClick={onAlert}>
+          <span className="alert-icon">⚠️</span>
+          <div className="alert-txt"><strong>{alerts.length} paciente{alerts.length>1?'s':''}</strong> sem check-in há 3+ dias</div>
+          <button className="alert-action">Ver alertas ›</button>
+        </div>
+      )}
+
+      <div className="adm-stats">
+        {[
+          {ic:'◯',v:patients.length,l:'Pacientes ativas'},
+          {ic:'✦',v:totalCI,l:'Check-ins totais'},
+          {ic:'◈',v:activeToday,l:'Ativas hoje'},
+        ].map(s=>(
+          <div key={s.l} className="adm-stat">
+            <div className="adm-stat-ic" style={{fontFamily:'Georgia,serif',fontSize:20,color:'var(--terra)'}}>{s.ic}</div>
+            <div><div className="adm-stat-v">{s.v}</div><div className="adm-stat-l">{s.l}</div></div>
+          </div>
+        ))}
+      </div>
+
+      {/* weekly bar chart */}
+      <div className="adm-card">
+        <div className="adm-card-t">Check-ins por semana</div>
+        <div style={{display:'flex',alignItems:'flex-end',gap:12,height:80}}>
+          {weeklyData.map((w,i)=>(
+            <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+              <div style={{width:'100%',background:'var(--bg2)',borderRadius:8,overflow:'hidden',height:60,display:'flex',alignItems:'flex-end'}}>
+                <div style={{width:'100%',height:`${Math.round((w.count/maxW)*100)}%`,background:'var(--grad)',borderRadius:8,minHeight:4,transition:'height .4s'}}/>
+              </div>
+              <span style={{fontSize:10,color:'var(--muted)',fontWeight:600}}>{w.week}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* patient progress */}
+      <div className="adm-card">
+        <div className="adm-card-t">Progresso das Pacientes</div>
+        {patients.map(p=>{
+          const ph=PHASES.find(x=>x.id===p.currentPhase)||PHASES[0];
+          const prevDays=PHASES.filter(x=>x.id<p.currentPhase).reduce((a,x)=>a+x.days,0);
+          const phCI=Math.max(0,(p.checkins?.length||0)-prevDays);
+          const pct=Math.min(Math.round((phCI/ph.days)*100),100);
+          const lastCI=p.checkins?.length?p.checkins[p.checkins.length-1].date:null;
+          const daysAgo=lastCI?Math.round((new Date()-new Date(lastCI))/(1000*60*60*24)):null;
+          return (
+            <div key={p.id} style={{marginBottom:20,cursor:'pointer'}} onClick={()=>onViewDetail(p.id)}>
+              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+                <div className="pt-av" style={{width:34,height:34,fontSize:13}}>{p.name[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontWeight:600,fontSize:14}}>{p.name}</span>
+                    <span style={{fontSize:11,color:daysAgo===0?'var(--sage)':daysAgo>=3?'var(--rose)':'var(--muted)',fontWeight:600}}>
+                      {daysAgo===null?'Sem check-ins':daysAgo===0?'✓ Hoje':`${daysAgo}d atrás`}
+                    </span>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>Fase {p.currentPhase}: {ph.name} · {phCI}/{ph.days} dias</div>
+                </div>
+              </div>
+              <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
+            </div>
+          );
+        })}
+        {!patients.length&&<p style={{textAlign:'center',color:'var(--muted)',padding:'24px 0',fontSize:14}}>Nenhuma paciente cadastrada ainda</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── PATIENTS LIST ──
+function APatients({patients,onNew,onEdit,onDel,onAdvance,onViewDetail}){
+  const [search,setSearch]=useState('');
+  const todayStr=new Date().toISOString().split('T')[0];
+  const filtered=patients.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||p.email.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="a1">
+      <div className="adm-ph">
+        <div><h1 className="adm-pt">Pacientes</h1><p className="adm-ps">{patients.length} paciente{patients.length!==1?'s':''} cadastrada{patients.length!==1?'s':''}</p></div>
+        <button className="btn btn-pri" onClick={onNew}>+ Nova Paciente</button>
+      </div>
+
+      <div style={{marginBottom:20}}>
+        <input className="fi" placeholder="Buscar por nome ou e-mail..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:360}}/>
+      </div>
+
+      {filtered.map(p=>{
+        const ph=PHASES.find(x=>x.id===p.currentPhase)||PHASES[0];
+        const prevDays=PHASES.filter(x=>x.id<p.currentPhase).reduce((a,x)=>a+x.days,0);
+        const phCI=Math.max(0,(p.checkins?.length||0)-prevDays);
+        const pct=Math.min(Math.round((phCI/ph.days)*100),100);
+        const todayDone=(p.checkins||[]).some(c=>c.date===todayStr);
+        const s=p.stats||{};
+        const lastCI=p.checkins?.length?p.checkins[p.checkins.length-1].date:null;
+        const daysAgo=lastCI?Math.round((new Date()-new Date(lastCI))/(1000*60*60*24)):null;
+
+        return (
+          <div key={p.id} className="pt-card">
+            <div className="pt-card-top">
+              <div className="pt-card-av">{p.name[0]}</div>
+              <div className="pt-card-info">
+                <div className="pt-card-nm">{p.name}</div>
+                <div className="pt-card-mt">{p.email}</div>
+              </div>
+              <div className="pt-card-actions">
+                <span className="pt-ph-tag">Fase {p.currentPhase}</span>
+                <span style={{fontSize:11,fontWeight:600,padding:'4px 10px',borderRadius:20,
+                  background:todayDone?'rgba(107,140,110,.12)':'rgba(196,120,120,.08)',
+                  color:todayDone?'var(--sage)':'var(--rose)'}}>
+                  {todayDone?'✓ Check-in':'Sem check-in'}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-card-body">
+              {[
+                {v:p.checkins?.length||0,l:'Check-ins',c:'ci'},
+                {v:s.exercises||0,l:'Exercícios',c:'ex'},
+                {v:s.meditations||0,l:'Meditações',c:'med'},
+                {v:daysAgo===null?'—':daysAgo===0?'hoje':`${daysAgo}d`,l:'Último CI',c:'ph'},
+              ].map(st=>(
+                <div key={st.l} className="pt-mini-stat">
+                  <div className={`pt-mini-stat-v ${st.c}`}>{st.v}</div>
+                  <div className="pt-mini-stat-l">{st.l}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-card-prog">
+              <div className="pt-card-prog-lbl">
+                <span>{ph.name} — {phCI}/{ph.days} dias</span>
+                <strong>{pct}%</strong>
+              </div>
+              <div className="prog-wrap"><div className="prog-fill" style={{width:`${pct}%`}}/></div>
+            </div>
+
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button className="btn btn-sec btn-sm" onClick={()=>onViewDetail(p.id)}>📊 Ver detalhes</button>
+              <button className="btn btn-sec btn-sm" onClick={()=>onEdit(p)}>✏ Editar</button>
+              <button className="btn btn-gho btn-sm" onClick={()=>onAdvance(p.id)}>↑ Avançar fase</button>
+              <button className="btn btn-dan btn-sm" onClick={()=>onDel(p.id)}>✕ Remover</button>
+            </div>
+          </div>
+        );
+      })}
+      {!filtered.length&&<p style={{textAlign:'center',color:'var(--muted)',padding:'40px 0',fontSize:14}}>{search?'Nenhuma paciente encontrada':'Nenhuma paciente cadastrada ainda'}</p>}
+    </div>
+  );
+}
+
+// ── ALERTS ──
+function AAlerts({patients,onViewDetail}){
+  return (
+    <div className="a1">
+      <div className="adm-ph">
+        <div><h1 className="adm-pt">Alertas</h1><p className="adm-ps">Pacientes que precisam de atenção</p></div>
+      </div>
+      {!patients.length&&(
+        <div style={{textAlign:'center',padding:'60px 0'}}>
+          <div style={{fontSize:48,marginBottom:16}}>✦</div>
+          <div style={{fontFamily:'Libre Baskerville,serif',fontSize:20,marginBottom:8}}>Tudo em dia!</div>
+          <div style={{fontSize:14,color:'var(--muted)'}}>Nenhuma paciente com alerta no momento.</div>
+        </div>
+      )}
+      {patients.map(p=>{
+        const ci=p.checkins||[];
+        const lastCI=ci.length?ci[ci.length-1].date:null;
+        const daysAgo=lastCI?Math.round((new Date()-new Date(lastCI))/(1000*60*60*24)):null;
+        const ph=PHASES.find(x=>x.id===p.currentPhase)||PHASES[0];
+        return (
+          <div key={p.id} className="alert-banner" style={{flexDirection:'column',alignItems:'flex-start',gap:10,marginBottom:12}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,width:'100%'}}>
+              <span className="alert-icon">⚠️</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:14}}>{p.name}</div>
+                <div className="alert-txt" style={{marginTop:2}}>
+                  {daysAgo===null
+                    ?<>Nunca realizou um check-in — paciente inativa desde o cadastro</>
+                    :<>Sem check-in há <strong>{daysAgo} dias</strong> · Fase {p.currentPhase}: {ph.name}</>
+                  }
+                </div>
+              </div>
+              <button className="btn btn-sec btn-sm" onClick={()=>onViewDetail(p.id)}>Ver perfil</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── PATIENT DETAIL MODAL ──
+function PatientDetail({patient,onClose,onEdit,onAdvance}){
+  const [tab,setTab]=useState('overview');
+  if(!patient)return null;
+
+  const checkins=[...(patient.checkins||[])].reverse();
+  const ph=PHASES.find(x=>x.id===patient.currentPhase)||PHASES[0];
+  const prevDays=PHASES.filter(x=>x.id<patient.currentPhase).reduce((a,x)=>a+x.days,0);
+  const phCI=Math.max(0,(patient.checkins?.length||0)-prevDays);
+  const pct=Math.min(Math.round((phCI/ph.days)*100),100);
+  const s=patient.stats||{};
+
+  // symptom frequency
+  const symFreq={};
+  (patient.checkins||[]).forEach(c=>(c.symptoms||[]).forEach(s=>{symFreq[s]=(symFreq[s]||0)+1;}));
+  const topSyms=Object.entries(symFreq).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxSym=topSyms[0]?.[1]||1;
+
+  // avg energy/sleep/water
+  const cis=patient.checkins||[];
+  const avgEnergy=cis.length?Math.round(cis.reduce((a,c)=>a+(c.energy||0),0)/cis.length*10)/10:0;
+  const avgSleep=cis.length?Math.round(cis.reduce((a,c)=>a+(c.sleep||0),0)/cis.length*10)/10:0;
+  const avgWater=cis.length?Math.round(cis.reduce((a,c)=>a+(c.water||0),0)/cis.length*10)/10:0;
+
+  // last 30 days heatmap
+  const today=new Date();
+  const doneSet=new Set((patient.checkins||[]).map(c=>c.date));
+  const last30=Array.from({length:30},(_,i)=>{const d=new Date(today);d.setDate(today.getDate()-29+i);return d.toISOString().split('T')[0];});
+
+  const mmap={Ótimo:'😊',Bom:'🙂',Regular:'😐',Ruim:'😕',Péssimo:'😞'};
+
+  return (
+    <div className="modal-bg" onClick={e=>e.target.className==='modal-bg'&&onClose()}>
+      <div className="modal-box" style={{maxWidth:640}}>
+        {/* header */}
+        <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20,padding:'0 0 18px',borderBottom:'1px solid var(--border2)'}}>
+          <div className="pt-card-av" style={{width:50,height:50,fontSize:20}}>{patient.name[0]}</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'Libre Baskerville,serif',fontSize:20,fontWeight:400}}>{patient.name}</div>
+            <div style={{fontSize:12,color:'var(--muted)',marginTop:3}}>{patient.email} · CPF: {patient.cpf}</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-sec btn-sm" onClick={()=>onEdit(patient)}>✏ Editar</button>
+            {patient.currentPhase<4&&<button className="btn btn-gho btn-sm" onClick={()=>onAdvance(patient.id)}>↑ Fase</button>}
+            <button className="modal-cls" onClick={onClose}>✕</button>
+          </div>
+        </div>
+
+        {/* tabs */}
+        <div className="modal-tabs">
+          {[{id:'overview',l:'Visão geral'},{id:'checkins',l:'Check-ins'},{id:'symptoms',l:'Sintomas'},{id:'protocol',l:'Protocolo'}].map(t=>(
+            <button key={t.id} className={`modal-tab${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
+          ))}
+        </div>
+
+        {/* OVERVIEW */}
+        {tab==='overview'&&(
+          <div>
+            <div className="chk-detail-grid">
+              {[
+                {v:patient.checkins?.length||0,l:'Check-ins totais'},
+                {v:`${pct}%`,l:`Progresso — Fase ${patient.currentPhase}`},
+                {v:avgEnergy||'—',l:'Média energia'},
+                {v:avgSleep||'—',l:'Média sono'},
+              ].map(st=>(
+                <div key={st.l} className="chk-detail-box">
+                  <div className="chk-detail-val">{st.v}</div>
+                  <div className="chk-detail-lbl">{st.l}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Progresso na fase</div>
+            <div className="pt-card-prog-lbl">
+              <span>{ph.name} ({ph.months})</span><strong>{pct}%</strong>
+            </div>
+            <div className="prog-wrap" style={{height:8,marginBottom:6}}><div className="prog-fill" style={{width:`${pct}%`}}/></div>
+            <div style={{fontSize:12,color:'var(--muted)',marginBottom:20}}>{phCI} de {ph.days} dias concluídos</div>
+
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Últimos 30 dias</div>
+            <div className="week-heatmap">
+              {last30.map((d,i)=>(
+                <div key={i} className={`hm-day${doneSet.has(d)?' done':''}${d===new Date().toISOString().split('T')[0]?' today':''}`} title={d}/>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:12,fontSize:11,color:'var(--muted)',marginTop:6}}>
+              <span>◼ Check-in feito</span><span>□ Sem check-in</span>
+            </div>
+          </div>
+        )}
+
+        {/* CHECKINS */}
+        {tab==='checkins'&&(
+          <div>
+            {!checkins.length&&<p style={{textAlign:'center',color:'var(--muted)',padding:'32px 0',fontSize:14}}>Nenhum check-in registrado ainda</p>}
+            <div className="chk-timeline">
+              {checkins.slice(0,20).map((c,i)=>{
+                const isGood=['Ótimo','Bom'].includes(c.mood);
+                return (
+                  <div key={i} className="chk-tl-item">
+                    <div className={`chk-tl-dot${isGood?' good':c.mood?'bad':''}`}>{mmap[c.mood]||'◇'}</div>
+                    <div className="chk-tl-content">
+                      <div className="chk-tl-date">{new Date(c.date+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})}</div>
+                      <div className="chk-tl-mood">{c.mood||'Humor não registrado'}</div>
+                      <div className="chk-tl-tags">
+                        {c.energy>0&&<span className="chk-tl-tag">⚡ Energia {c.energy}/5</span>}
+                        {c.sleep>0&&<span className="chk-tl-tag">◑ Sono {c.sleep}/5</span>}
+                        {c.water>0&&<span className="chk-tl-tag">💧 {c.water} copos</span>}
+                        {c.exerciseDone&&<span className="chk-tl-tag pos">Exercício ✓</span>}
+                        {c.meditationDone&&<span className="chk-tl-tag pos">Meditação ✓</span>}
+                        {(c.symptoms||[]).map((s,j)=><span key={j} className="chk-tl-tag neg">{s}</span>)}
+                      </div>
+                      {c.notes&&<div className="chk-tl-notes">"{c.notes}"</div>}
+                    </div>
+                  </div>
+                );
+              })}
+              {checkins.length>20&&<p style={{fontSize:12,color:'var(--muted)',textAlign:'center',paddingTop:12}}>Mostrando os 20 mais recentes de {checkins.length} check-ins</p>}
+            </div>
+          </div>
+        )}
+
+        {/* SYMPTOMS */}
+        {tab==='symptoms'&&(
+          <div>
+            {!topSyms.length&&<p style={{textAlign:'center',color:'var(--muted)',padding:'32px 0',fontSize:14}}>Nenhum sintoma registrado ainda</p>}
+            {topSyms.length>0&&(
+              <>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:16,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Sintomas mais frequentes</div>
+                {topSyms.map(([sym,cnt],i)=>(
+                  <div key={i} className="sym-freq-item">
+                    <span className="sym-freq-name">{sym}</span>
+                    <div className="sym-freq-bar-wrap">
+                      <div className="sym-freq-bar" style={{width:`${Math.round((cnt/maxSym)*100)}%`}}/>
+                    </div>
+                    <span className="sym-freq-count">{cnt}×</span>
+                  </div>
+                ))}
+                <div style={{marginTop:20,padding:14,background:'var(--bg2)',borderRadius:12,fontSize:13,color:'var(--ink3)'}}>
+                  <strong style={{color:'var(--ink)'}}>Média de bem-estar:</strong> Energia {avgEnergy}/5 · Sono {avgSleep}/5 · {avgWater} copos/dia
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* PROTOCOL */}
+        {tab==='protocol'&&(
+          <div>
+            {/* supplements */}
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Suplementação</div>
+            {(patient.supplements||[]).map((s,i)=>(
+              <div key={i} className="s-row" style={{marginBottom:7}}>
+                <span style={{color:'var(--terra)',fontFamily:'Georgia,serif'}}>◈</span>
+                <span className="s-txt"><b>{s.name}</b> — {s.dose}</span>
+              </div>
+            ))}
+            {!(patient.supplements||[]).length&&<p style={{fontSize:13,color:'var(--muted)',marginBottom:16}}>Nenhum suplemento cadastrado</p>}
+
+            <div style={{margin:'16px 0 10px',fontWeight:700,fontSize:13,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Plano Alimentar</div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:8}}>
+              {(patient.canEat||[]).map((f,i)=><span key={i} className="t-pill g">{f}</span>)}
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16}}>
+              {(patient.cantEat||[]).map((f,i)=><span key={i} className="t-pill r">✕ {f}</span>)}
+            </div>
+
+            <div style={{margin:'16px 0 10px',fontWeight:700,fontSize:13,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>Exames Recomendados</div>
+            {(patient.exams||[]).map((ex,i)=>(
+              <div key={i} className="s-row" style={{marginBottom:7}}>
+                <span style={{fontFamily:'Georgia,serif',color:'#7a9dc4'}}>◈</span>
+                <span className="s-txt">{ex.name} <span style={{color:'var(--muted)',fontWeight:400}}>— {ex.month}</span></span>
+              </div>
+            ))}
+            {!(patient.exams||[]).length&&<p style={{fontSize:13,color:'var(--muted)'}}>Nenhum exame cadastrado</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── PATIENT MODAL (tabbed) ──
+function PatientModal({patient,onClose,onSave}){
+  const [tab,setTab]=useState('dados');
+  const [name,setName]=useState(patient?.name||'');
+  const [cpf,setCpf]=useState(patient?.cpf||'');
+  const [email,setEmail]=useState(patient?.email||'');
+  const [pw,setPw]=useState(patient?.password||'vita@2024');
+  const [phase,setPhase]=useState(patient?.currentPhase||1);
+  const [can,setCan]=useState(patient?.canEat||[]);
+  const [cant,setCant]=useState(patient?.cantEat||[]);
+  const [suppl,setSuppl]=useState(patient?.supplements||[]);
+  const [exams,setExams]=useState(patient?.exams||[]);
+  const [ci,setCi]=useState('');const [cni,setCni]=useState('');
+  const [sn,setSn]=useState('');const [sd,setSd]=useState('');
+  const [xn,setXn]=useState('');const [xm,setXm]=useState('');
+
+  const fmt=v=>{const n=v.replace(/\D/g,'').slice(0,11);return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4').replace(/(\d{3})(\d{3})(\d{3})/,'$1.$2.$3').replace(/(\d{3})(\d{3})/,'$1.$2').replace(/(\d{3})/,'$1');};
+  const addT=(arr,set,v,sv)=>{if(!v.trim())return;set([...arr,v.trim()]);sv('');};
+  const remT=(arr,set,i)=>set(arr.filter((_,j)=>j!==i));
+
+  const doSave=()=>{
+    if(!name||!cpf||!email){alert('Nome, CPF e email são obrigatórios');return;}
+    onSave({
+      name,cpf,email,password:pw,currentPhase:+phase,
+      unlockedPhases:Array.from({length:+phase},(_,i)=>i+1),
+      canEat:can,cantEat:cant,supplements:suppl,exams,
+      exercises:patient?.exercises||[],meditations:patient?.meditations||[],recipes:patient?.recipes||[],
+      checkins:patient?.checkins||[],stats:patient?.stats||{exercises:0,meditations:0,recipes:0,checkins:0},
+      reminders:patient?.reminders||[{id:'r1',title:'Check-in diário',desc:'Registre como você está se sentindo hoje',time:'20:00',done:false}],
+      bio:patient?.bio||{},symptoms:patient?.symptoms||[],objectives:patient?.objectives||[],
+      dob:patient?.dob||'',hormonalPhase:patient?.hormonalPhase||'',
+    });
+  };
+
+  const tabs=[{id:'dados',l:'Dados'},{id:'protocolo',l:'Protocolo'},{id:'exames',l:'Exames'}];
+
+  return (
+    <div className="modal-bg">
+      <div className="modal-box">
+        <div className="modal-hd">
+          <h2 className="modal-ttl">{patient?`Editar — ${patient.name.split(' ')[0]}`:'Nova Paciente'}</h2>
+          <button className="modal-cls" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="modal-tabs">
+          {tabs.map(t=><button key={t.id} className={`modal-tab${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>)}
+        </div>
+
+        {/* TAB: DADOS */}
+        {tab==='dados'&&(
+          <div>
+            <div className="grid2">
+              <div className="fl"><label>Nome completo</label><input className="fi" value={name} onChange={e=>setName(e.target.value)} placeholder="Maria Silva"/></div>
+              <div className="fl"><label>CPF</label><input className="fi" value={cpf} onChange={e=>setCpf(fmt(e.target.value))} placeholder="000.000.000-00"/></div>
+              <div className="fl"><label>E-mail</label><input className="fi" value={email} onChange={e=>setEmail(e.target.value)} placeholder="maria@email.com"/></div>
+              <div className="fl"><label>Senha inicial</label><input className="fi" value={pw} onChange={e=>setPw(e.target.value)}/></div>
+            </div>
+            <div className="fl">
+              <label>Fase atual</label>
+              <select className="fs" value={phase} onChange={e=>setPhase(e.target.value)}>
+                {PHASES.map(p=><option key={p.id} value={p.id}>Fase {p.id}: {p.name} ({p.months})</option>)}
+              </select>
+            </div>
+            <div style={{marginTop:16,padding:14,background:'var(--bg2)',borderRadius:12,fontSize:13,color:'var(--ink3)'}}>
+              💡 Exercícios, meditações e receitas são fornecidos automaticamente por fase. Você pode personalizar o protocolo alimentar e suplementação na aba <strong>Protocolo</strong>.
+            </div>
+          </div>
+        )}
+
+        {/* TAB: PROTOCOLO */}
+        {tab==='protocolo'&&(
+          <div>
+            <div className="ml" style={{marginTop:0}}>✓ Pode comer</div>
+            <div className="tags-d">{can.map((t,i)=><span key={i} className="t-pill g">{t}<span className="t-pill-x" onClick={()=>remT(can,setCan,i)}>×</span></span>)}</div>
+            <div className="t-inp">
+              <input value={ci} onChange={e=>setCi(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addT(can,setCan,ci,setCi)} placeholder="Ex: frango, brócolis, ovos..."/>
+              <button className="btn btn-sec btn-sm" onClick={()=>addT(can,setCan,ci,setCi)}>+</button>
+            </div>
+
+            <div className="ml">✕ Não pode comer</div>
+            <div className="tags-d">{cant.map((t,i)=><span key={i} className="t-pill r">{t}<span className="t-pill-x" onClick={()=>remT(cant,setCant,i)}>×</span></span>)}</div>
+            <div className="t-inp">
+              <input value={cni} onChange={e=>setCni(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addT(cant,setCant,cni,setCni)} placeholder="Ex: glúten, laticínios, açúcar..."/>
+              <button className="btn btn-sec btn-sm" onClick={()=>addT(cant,setCant,cni,setCni)}>+</button>
+            </div>
+
+            <div className="divv"/>
+            <div className="ml" style={{marginTop:0}}>◈ Suplementação</div>
+            {suppl.map((s,i)=>(
+              <div key={i} className="s-row">
+                <span style={{color:'var(--terra)',fontFamily:'Georgia,serif'}}>◈</span>
+                <span className="s-txt"><b>{s.name}</b> — {s.dose}</span>
+                <button className="s-del" onClick={()=>setSuppl(suppl.filter((_,j)=>j!==i))}>×</button>
+              </div>
+            ))}
+            <div className="t-inp">
+              <input value={sn} onChange={e=>setSn(e.target.value)} placeholder="Nome do suplemento" style={{flex:2}}/>
+              <input value={sd} onChange={e=>setSd(e.target.value)} placeholder="Dosagem" style={{flex:1}}/>
+              <button className="btn btn-sec btn-sm" onClick={()=>{if(sn.trim()){setSuppl([...suppl,{name:sn.trim(),dose:sd.trim()}]);setSn('');setSd('');}}}>+</button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: EXAMES */}
+        {tab==='exames'&&(
+          <div>
+            <div style={{padding:14,background:'var(--bg2)',borderRadius:12,fontSize:13,color:'var(--ink3)',marginBottom:16}}>
+              Cadastre os exames recomendados para esta paciente nesta fase do protocolo.
+            </div>
+            {exams.map((ex,i)=>(
+              <div key={i} className="s-row">
+                <span style={{fontFamily:'Georgia,serif',color:'#7a9dc4'}}>◈</span>
+                <span className="s-txt"><b>{ex.name}</b> — {ex.month}</span>
+                <button className="s-del" onClick={()=>setExams(exams.filter((_,j)=>j!==i))}>×</button>
+              </div>
+            ))}
+            <div className="t-inp">
+              <input value={xn} onChange={e=>setXn(e.target.value)} placeholder="Nome do exame" style={{flex:2}}/>
+              <input value={xm} onChange={e=>setXm(e.target.value)} placeholder="Ex: Mês 1" style={{flex:1}}/>
+              <button className="btn btn-sec btn-sm" onClick={()=>{if(xn.trim()){setExams([...exams,{name:xn.trim(),month:xm||'Mês 1',icon:'◈'}]);setXn('');setXm('');}}}>+</button>
+            </div>
+          </div>
+        )}
+
+        <div className="modal-foot">
+          <button className="btn btn-sec" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-pri" onClick={doSave}>Salvar Paciente</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+
+</script>
+</body>
+</html>
